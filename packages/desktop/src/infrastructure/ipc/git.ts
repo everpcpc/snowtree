@@ -2,7 +2,7 @@ import type { IpcMain } from 'electron';
 import type { AppServices } from './types';
 
 export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): void {
-  const { sessionManager, gitDiffManager, gitExecutor } = services;
+  const { sessionManager, gitDiffManager, gitStagingManager, gitExecutor } = services;
 
   ipcMain.handle('sessions:get-executions', async (_event, sessionId: string) => {
     try {
@@ -190,6 +190,38 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       return { success: true, data: { currentBranch } };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to load git commands' };
+    }
+  });
+
+  ipcMain.handle('sessions:stage-line', async (_event, sessionId: string, options: {
+    filePath: string;
+    isStaging: boolean;
+    targetLine: {
+      type: 'added' | 'deleted';
+      oldLineNumber: number | null;
+      newLineNumber: number | null;
+    };
+  }) => {
+    try {
+      const session = sessionManager.getSession(sessionId);
+      if (!session?.worktreePath) {
+        return { success: false, error: 'Session worktree not found' };
+      }
+
+      const result = await gitStagingManager.stageLines({
+        worktreePath: session.worktreePath,
+        sessionId,
+        filePath: options.filePath,
+        isStaging: options.isStaging,
+        targetLine: options.targetLine,
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to stage line',
+      };
     }
   });
 }

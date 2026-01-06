@@ -290,6 +290,51 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
         </div>
       </div>
 
+      {/* Keyboard shortcuts hint - only show for staged/unstaged working tree */}
+      {(workingScope === 'staged' || workingScope === 'unstaged') && (
+        <div
+          className="px-3 py-1.5 flex items-center gap-3"
+          style={{ backgroundColor: 'var(--st-surface)', borderBottom: `1px solid ${border}` }}
+        >
+          <span className="text-[11px]" style={{ color: 'var(--st-text-faint)' }}>
+            💡 <span style={{ color: 'var(--st-text)' }}>Click</span> line or
+            <kbd style={{
+              backgroundColor: 'var(--st-hover)',
+              padding: '1px 4px',
+              borderRadius: '2px',
+              marginLeft: '4px',
+              marginRight: '4px',
+              fontFamily: 'monospace',
+              fontSize: '10px',
+              color: 'var(--st-text)'
+            }}>1</kbd>
+            to {workingScope === 'unstaged' ? 'stage' : 'unstage'} •
+            <kbd style={{
+              backgroundColor: 'var(--st-hover)',
+              padding: '1px 4px',
+              borderRadius: '2px',
+              marginLeft: '6px',
+              marginRight: '4px',
+              fontFamily: 'monospace',
+              fontSize: '10px',
+              color: 'var(--st-text)'
+            }}>v</kbd>
+            for multi-select •
+            <kbd style={{
+              backgroundColor: 'var(--st-hover)',
+              padding: '1px 4px',
+              borderRadius: '2px',
+              marginLeft: '6px',
+              marginRight: '4px',
+              fontFamily: 'monospace',
+              fontSize: '10px',
+              color: 'var(--st-text)'
+            }}>a</kbd>
+            to {workingScope === 'unstaged' ? 'stage' : 'unstage'} all
+          </span>
+        </div>
+      )}
+
       {banner && (
         <div
           className="px-3 py-2 flex items-center justify-between gap-3"
@@ -361,6 +406,9 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
             filePath={filePath || undefined}
             filesMeta={viewerFiles}
             className="h-full"
+            sessionId={sessionId}
+            currentScope={target?.kind === 'working' ? (target.scope as 'staged' | 'unstaged' | undefined) : undefined}
+            onLineStaged={handleRefresh}
           />
         ) : (
           <div

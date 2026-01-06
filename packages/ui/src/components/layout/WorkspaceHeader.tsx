@@ -75,6 +75,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = React.memo(({
   return (
     <div
       className="flex items-center justify-between px-3 py-2 st-surface border-b st-hairline"
+      data-testid="workspace-header"
       style={{
         ['WebkitAppRegion' as never]: 'drag',
         userSelect: 'none',
@@ -82,12 +83,14 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = React.memo(({
     >
       <div className="flex items-center gap-3 min-w-0">
         {/* Session name - primary */}
-        <h1 className="text-[13px] font-medium truncate" style={{ color: 'var(--st-text)' }}>
+        <h1 className="text-[13px] font-medium truncate" style={{ color: 'var(--st-text)' }} data-testid="session-name">
           {session.name}
         </h1>
 
         {/* Status dot */}
-        <StatusDot status={session.status} />
+        <span data-testid="session-status" className="inline-flex">
+          <StatusDot status={session.status} />
+        </span>
 
         {/* Branch */}
         <div
@@ -98,7 +101,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = React.memo(({
           }}
         >
           <GitBranch className="w-3 h-3" />
-          <span className="truncate max-w-[120px]">{branchName || 'main'}</span>
+          <span className="truncate max-w-[120px]" data-testid="branch-name">{branchName || 'main'}</span>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import type { WorktreeManager } from '../../features/worktree/WorktreeManager';
 import type { WorktreeNameGenerator } from '../../features/worktree/NameGenerator';
 import type { GitDiffManager } from '../../features/git/DiffManager';
 import type { GitStatusManager } from '../../features/git/StatusManager';
+import type { GitStagingManager } from '../../features/git/StagingManager';
 import type { ExecutionTracker } from '../../features/queue/ExecutionTracker';
 import type { DatabaseService } from '../database/database';
 import type { ClaudeExecutor } from '../../executors/claude';
@@ -25,6 +26,7 @@ export interface AppServices {
   codexExecutor: CodexExecutor;
   gitDiffManager: GitDiffManager;
   gitStatusManager: GitStatusManager;
+  gitStagingManager: GitStagingManager;
   executionTracker: ExecutionTracker;
   worktreeNameGenerator: WorktreeNameGenerator;
   taskQueue: TaskQueue | null;

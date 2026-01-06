@@ -57,6 +57,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDiff: (sessionId: string, target: { kind: 'working' } | { kind: 'commit'; hash: string }): Promise<IPCResponse> =>
       ipcRenderer.invoke('sessions:get-diff', sessionId, target),
     getGitCommands: (sessionId: string): Promise<IPCResponse> => ipcRenderer.invoke('sessions:get-git-commands', sessionId),
+    stageLine: (sessionId: string, options: {
+      filePath: string;
+      isStaging: boolean;
+      targetLine: {
+        type: 'added' | 'deleted';
+        oldLineNumber: number | null;
+        newLineNumber: number | null;
+      };
+    }): Promise<IPCResponse> => ipcRenderer.invoke('sessions:stage-line', sessionId, options),
   },
 
   panels: {

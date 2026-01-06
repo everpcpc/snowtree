@@ -18,11 +18,20 @@ interface SessionStore {
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
-  activeSessionId: null,
+  activeSessionId: (() => {
+    if (typeof window === 'undefined') return null;
+    const stored = window.localStorage.getItem('snowtree-active-session-id');
+    return stored || null;
+  })(),
   gitStatusLoading: new Set(),
   isLoaded: false,
 
-  loadSessions: (sessions) => set({ sessions, isLoaded: true }),
+  loadSessions: (sessions) => set((state) => {
+    const activeSessionId = state.activeSessionId && sessions.some((s) => s.id === state.activeSessionId)
+      ? state.activeSessionId
+      : null;
+    return { sessions, isLoaded: true, activeSessionId };
+  }),
 
   addSession: (session) => set((state) => ({
     sessions: [session, ...state.sessions],
@@ -33,13 +42,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     sessions: state.sessions.map((s) => (s.id === updated.id ? { ...s, ...updated } : s))
   })),
 
-  deleteSession: (deleted) => set((state) => ({
-    sessions: state.sessions.filter((s) => s.id !== deleted.id),
-    activeSessionId: state.activeSessionId === deleted.id ? null : state.activeSessionId
-  })),
+  deleteSession: (deleted) => set((state) => {
+    const nextActiveSessionId = state.activeSessionId === deleted.id ? null : state.activeSessionId;
+    if (typeof window !== 'undefined' && state.activeSessionId === deleted.id) {
+      window.localStorage.removeItem('snowtree-active-session-id');
+    }
+    return {
+      sessions: state.sessions.filter((s) => s.id !== deleted.id),
+      activeSessionId: nextActiveSessionId,
+    };
+  }),
 
   setActiveSession: (sessionId) => {
     set({ activeSessionId: sessionId });
+    if (typeof window !== 'undefined') {
+      if (sessionId) window.localStorage.setItem('snowtree-active-session-id', sessionId);
+      else window.localStorage.removeItem('snowtree-active-session-id');
+    }
     void window.electronAPI?.invoke('sessions:set-active-session', sessionId);
   },
 
@@ -56,3 +75,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   }
 }));
 
+// Expose store for E2E testing
+if (typeof window !== 'undefined') {
+  (window as any).__sessionStore = useSessionStore;
+}

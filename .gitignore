@@ -7,6 +7,17 @@ dist-electron/
 *.tsbuildinfo
 tools/dev-*/
 
+# Test output
+coverage/
+test-results/
+packages/**/coverage/
+packages/**/test-results/
+packages/ui/playwright-report/
+
+# Local E2E data
+packages/ui/.e2e-test-repo/
+packages/ui/.snowtree_e2e/
+
 # Logs
 *.log
 

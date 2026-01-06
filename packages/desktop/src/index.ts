@@ -16,7 +16,7 @@ import { TaskQueue } from './features/queue';
 import { SessionManager } from './features/session';
 import { ConfigManager } from './infrastructure/config/configManager';
 import { WorktreeManager, WorktreeNameGenerator } from './features/worktree';
-import { GitDiffManager, GitStatusManager } from './features/git';
+import { GitDiffManager, GitStatusManager, GitStagingManager } from './features/git';
 import { ExecutionTracker } from './features/queue';
 import { Database as DatabaseService, initializeDatabaseService } from './infrastructure/database';
 import { Logger } from './infrastructure/logging';
@@ -107,6 +107,7 @@ let claudeExecutor: ClaudeExecutor;
 let codexExecutor: CodexExecutor;
 let gitDiffManager: GitDiffManager;
 let gitStatusManager: GitStatusManager;
+let gitStagingManager: GitStagingManager;
 let executionTracker: ExecutionTracker;
 let worktreeNameGenerator: WorktreeNameGenerator;
 let databaseService: DatabaseService;
@@ -166,11 +167,13 @@ if (isDevelopment) {
 
 async function createWindow() {
   const initialTitle = setAppTitle();
+  const isTest = process.env.NODE_ENV === 'test';
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: initialTitle,
-    // Note: macOS ignores BrowserWindow.icon for Dock; we set it via app.dock.setIcon below.
+    show: !isTest,
     icon: path.join(app.getAppPath(), 'main/assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -580,6 +583,7 @@ async function initializeServices() {
 
   gitDiffManager = new GitDiffManager(gitExecutor, logger);
   gitStatusManager = new GitStatusManager(sessionManager, worktreeManager, gitDiffManager, gitExecutor, logger);
+  gitStagingManager = new GitStagingManager(gitExecutor, gitStatusManager);
   executionTracker = new ExecutionTracker(sessionManager, gitDiffManager);
   worktreeNameGenerator = new WorktreeNameGenerator(configManager);
 
@@ -604,6 +608,7 @@ async function initializeServices() {
     codexExecutor,
     gitDiffManager,
     gitStatusManager,
+    gitStagingManager,
     executionTracker,
     worktreeNameGenerator,
     taskQueue,

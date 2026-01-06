@@ -17,9 +17,19 @@
 ## Quick Start
 
 ```bash
-pnpm install
-pnpm dev
+make install
+make run
 ```
+
+## Testing
+
+```bash
+make check         # typecheck + lint + unit tests
+make e2e           # Playwright (browser)
+make e2e-electron  # Playwright (Electron; needs a display on Linux)
+```
+
+Run `make` to see all available targets.
 
 ## License
 

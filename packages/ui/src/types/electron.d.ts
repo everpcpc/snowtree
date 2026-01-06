@@ -95,6 +95,15 @@ export interface ElectronAPI {
     getExecutions: (sessionId: string) => Promise<IPCResponse<ExecutionDTO[]>>;
     getDiff: (sessionId: string, target: DiffTarget) => Promise<IPCResponse<GitDiffResultDTO>>;
     getGitCommands: (sessionId: string) => Promise<IPCResponse<{ currentBranch: string }>>;
+    stageLine: (sessionId: string, options: {
+      filePath: string;
+      isStaging: boolean;
+      targetLine: {
+        type: 'added' | 'deleted';
+        oldLineNumber: number | null;
+        newLineNumber: number | null;
+      };
+    }) => Promise<IPCResponse<{ success: boolean; error?: string }>>;
   };
 
   panels: {

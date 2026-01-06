@@ -1,0 +1,16 @@
+import { test, expect } from '@playwright/test';
+import { launchElectronApp, closeElectronApp } from './electron-helpers';
+
+async function setupTest() {
+  const { app, page } = await launchElectronApp();
+
+  const firstWorktree = page.locator('.st-tree-card [role="button"]').first();
+  if (await firstWorktree.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await firstWorktree.click();
+    await page.waitForTimeout(2000);
+  }
+
+  await page.waitForSelector('[data-testid="main-layout"]', { timeout: 15000 }).catch(() => {});
+
+  return { app, page };
+}

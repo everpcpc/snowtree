@@ -318,7 +318,7 @@ export const MainLayout: React.FC = React.memo(() => {
   }
 
   return (
-    <div className="flex-1 flex h-full overflow-hidden st-bg">
+    <div className="flex-1 flex h-full overflow-hidden st-bg" data-testid="main-layout">
       <div className="flex-1 flex flex-col min-w-0 relative">
         <WorkspaceHeader
           session={displaySession}
@@ -378,6 +378,7 @@ export const MainLayout: React.FC = React.memo(() => {
         className="group w-2 flex-shrink-0 cursor-col-resize relative"
         onMouseDown={handleResizeStart}
         title="Resize side panel"
+        data-testid="resize-handle"
       >
         <div
           className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px transition-colors"
@@ -399,6 +400,7 @@ export const MainLayout: React.FC = React.memo(() => {
       <div
         className="flex-shrink-0 h-full"
         style={{ width: rightPanelWidth }}
+        data-testid="right-panel"
       >
         <RightPanel
           key={displaySession.id}

@@ -75,6 +75,18 @@
   --st-diff-hunk-bg: rgba(97, 175, 239, 0.06);
   --st-diff-hunk-text: #5c6370;
 
+  /* Diff focus ring */
+  --st-diff-focus-ring: color-mix(in srgb, var(--st-accent) 25%, transparent);
+
+  /* Visual Mode enhanced colors */
+  --st-visual-mode-bg: rgba(100, 150, 255, 0.18);
+  --st-visual-mode-border: rgba(100, 150, 255, 0.4);
+  --st-visual-mode-text: rgba(100, 150, 255, 1);
+  --st-visual-mode-selected-bg: rgba(100, 150, 255, 0.35);
+  --st-visual-mode-selected-border: rgba(100, 150, 255, 0.6);
+  --st-visual-mode-anchor: rgba(100, 200, 255, 0.8);
+  --st-visual-mode-cursor: rgba(100, 255, 150, 0.8);
+
   /* Back-compat for older CSS rules */
   --color-border-secondary: var(--st-border-variant);
   --color-border-primary: var(--st-border-variant);
@@ -804,4 +816,37 @@ body {
 .monaco-editor .view-overlays,
 .monaco-editor .margin-view-overlays {
   background: transparent !important;
+}
+
+/* Diff container focus styles */
+.diff-container:focus-visible {
+  outline: 2px solid var(--st-diff-focus-ring);
+  outline-offset: -2px; /* Inner border to avoid layout shift */
+}
+
+/* Visual Mode animations */
+@keyframes breathing {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes visualModeSelect {
+  0% {
+    background-color: rgba(100, 150, 255, 0.45);
+    transform: scaleY(1.02);
+  }
+  100% {
+    background-color: rgba(100, 150, 255, 0.35);
+    transform: scaleY(1);
+  }
+}
+
+.visual-mode-selected {
+  animation: visualModeSelect 0.15s ease-out;
 }

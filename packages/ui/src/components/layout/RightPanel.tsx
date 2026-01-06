@@ -5,8 +5,28 @@ import { withTimeout } from '../../utils/withTimeout';
 import type { FileChange, RightPanelProps } from './types';
 import type { DiffTarget } from '../../types/diff';
 
-// One Dark colors
-const colors = {
+// One Dark colors - Type definition ensures compile-time safety
+type ColorScheme = {
+  bg: {
+    primary: string;
+    secondary: string;
+    hover: string;
+    selected: string;
+  };
+  text: {
+    primary: string;
+    secondary: string;
+    muted: string;
+    added: string;
+    deleted: string;
+    modified: string;
+    renamed: string;
+  };
+  accent: string;
+  border: string;
+};
+
+const colors: ColorScheme = {
   bg: {
     primary: 'var(--st-bg)',
     secondary: 'var(--st-surface)',
@@ -285,32 +305,86 @@ CommitItem.displayName = 'CommitItem';
 type WorkingTreeScope = 'all' | 'staged' | 'unstaged' | 'untracked';
 
 const WorkingGroupHeader: React.FC<{
-  label: string;
+  scope: 'staged' | 'unstaged' | 'untracked';
   count: number;
   additions: number;
   deletions: number;
   expanded: boolean;
   onToggle: () => void;
-}> = ({ label, count, additions, deletions, expanded, onToggle }) => (
-  <button
-    type="button"
-    onClick={onToggle}
-    className="w-full flex items-center justify-between px-3 py-2 text-xs transition-all duration-75 st-hoverable st-focus-ring"
-    style={{ color: colors.text.secondary, borderBottom: `1px solid ${colors.border}` }}
-  >
-    <div className="flex items-center gap-2 min-w-0">
-      <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? '' : '-rotate-90'}`} style={{ color: colors.text.muted }} />
-      <span className="font-medium">{label}</span>
-      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.bg.hover, color: colors.text.muted }}>
-        {count}
-      </span>
-    </div>
-    <div className="flex items-center gap-2 text-[10px] font-mono">
-      <span style={{ color: colors.text.added }}>+{additions}</span>
-      <span style={{ color: colors.text.deleted }}>-{deletions}</span>
-    </div>
-  </button>
-);
+}> = ({ scope, count, additions, deletions, expanded, onToggle }) => {
+  // 根据 scope 定义不同的视觉样式
+  const scopeStyles = {
+    staged: {
+      bg: 'rgba(180, 250, 114, 0.08)',  // 淡绿色背景
+      bgHover: 'rgba(180, 250, 114, 0.12)',
+      border: 'rgba(180, 250, 114, 0.3)',
+      text: '#a8e05f',
+      icon: '✓',
+      label: 'STAGED'
+    },
+    unstaged: {
+      bg: 'rgba(254, 253, 194, 0.08)',  // 淡黄色背景
+      bgHover: 'rgba(254, 253, 194, 0.12)',
+      border: 'rgba(254, 253, 194, 0.3)',
+      text: '#e5c07b',
+      icon: '●',
+      label: 'UNSTAGED'
+    },
+    untracked: {
+      bg: 'rgba(171, 178, 191, 0.05)',  // 灰色背景
+      bgHover: 'rgba(171, 178, 191, 0.08)',
+      border: 'rgba(171, 178, 191, 0.2)',
+      text: colors.text.secondary,
+      icon: '?',
+      label: 'UNTRACKED'
+    }
+  };
+
+  const style = scopeStyles[scope];
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="w-full flex items-center justify-between px-3 py-2 text-xs transition-all duration-150 st-focus-ring"
+      style={{
+        backgroundColor: isHovered ? style.bgHover : style.bg,
+        borderLeft: `3px solid ${style.border}`,
+        borderBottom: `1px solid ${colors.border}`,
+        marginBottom: 4,
+        cursor: 'pointer'
+      }}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? '' : '-rotate-90'}`}
+          style={{ color: style.text }}
+        />
+        <span style={{ fontSize: 12, color: style.text, marginRight: 4 }}>
+          {style.icon}
+        </span>
+        <span className="font-semibold" style={{ fontSize: 11, letterSpacing: '0.5px', color: style.text }}>
+          {style.label}
+        </span>
+        <span
+          className="text-[10px] font-mono px-1.5 py-0.5 rounded font-bold"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: style.text }}
+        >
+          {count}
+        </span>
+      </div>
+      {(additions > 0 || deletions > 0) && (
+        <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold">
+          {additions > 0 && <span style={{ color: colors.text.added }}>+{additions}</span>}
+          {deletions > 0 && <span style={{ color: colors.text.deleted }}>-{deletions}</span>}
+        </div>
+      )}
+    </button>
+  );
+};
 
 export const RightPanel: React.FC<RightPanelProps> = React.memo(({
   session,
@@ -932,36 +1006,46 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
             ) : (
               <div className="py-1">
                 {(['staged', 'unstaged', 'untracked'] as const).map((group) => {
-                  const label = group === 'staged' ? 'Staged' : group === 'unstaged' ? 'Unstaged' : 'Untracked';
                   const list = workingTree[group];
                   const additions = list.reduce((sum, f) => sum + (f.additions || 0), 0);
                   const deletions = list.reduce((sum, f) => sum + (f.deletions || 0), 0);
                   const expanded = workingExpanded[group];
                   const toggle = () => setWorkingExpanded((prev) => ({ ...prev, [group]: !prev[group] }));
+
+                  // 定义引导线颜色
+                  const guideColors = {
+                    staged: 'rgba(180, 250, 114, 0.15)',
+                    unstaged: 'rgba(254, 253, 194, 0.15)',
+                    untracked: 'rgba(171, 178, 191, 0.1)'
+                  };
+
                   return (
                     <div key={group}>
                       <WorkingGroupHeader
-                        label={label}
+                        scope={group}
                         count={list.length}
                         additions={additions}
                         deletions={deletions}
                         expanded={expanded}
                         onToggle={toggle}
                       />
-                      {expanded && (
-                        <div>
-                          {list.length === 0 ? (
-                            <div className="px-3 py-2 text-xs" style={{ color: colors.text.muted }}>No changes</div>
-                          ) : (
-                            list.map((file) => (
-                              <FileItem
-                                key={`${group}:${file.path}`}
-                                file={file}
-                                onClick={() => handleWorkingFileClick(group, file, list)}
-                                isSelected={selectedFile === file.path && selectedFileScope === group}
-                              />
-                            ))
-                          )}
+                      {expanded && list.length > 0 && (
+                        <div
+                          style={{
+                            paddingLeft: 16,
+                            borderLeft: `2px solid ${guideColors[group]}`,
+                            marginLeft: 12,
+                            marginBottom: 8
+                          }}
+                        >
+                          {list.map((file) => (
+                            <FileItem
+                              key={`${group}:${file.path}`}
+                              file={file}
+                              onClick={() => handleWorkingFileClick(group, file, list)}
+                              isSelected={selectedFile === file.path && selectedFileScope === group}
+                            />
+                          ))}
                         </div>
                       )}
                     </div>

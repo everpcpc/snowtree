@@ -63,6 +63,25 @@ export class API {
       requireElectron();
       return window.electronAPI.sessions.getGitCommands(sessionId);
     },
+
+    async stageLine(sessionId: string, options: {
+      filePath: string;
+      isStaging: boolean;
+      targetLine: {
+        type: 'added' | 'deleted';
+        oldLineNumber: number | null;
+        newLineNumber: number | null;
+      };
+    }): Promise<{ success: boolean; error?: string }> {
+      requireElectron();
+      const result = await window.electronAPI.sessions.stageLine(sessionId, options);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to stage line');
+      }
+
+      return result.data || { success: true };
+    },
   };
 
   static projects = {
