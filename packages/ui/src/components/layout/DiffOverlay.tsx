@@ -149,7 +149,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
     };
 
     loadDiff();
-  }, [isOpen, sessionId, target, onClose]);
+  }, [isOpen, sessionId, target, filePath, onClose]);
 
   const handleRefresh = useCallback(async () => {
     if (!sessionId || !target) return;
@@ -172,6 +172,22 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
         setDiff(allRes.data?.diff ?? '');
         setStagedDiff(stagedRes.data?.diff ?? '');
         setUnstagedDiff(unstagedRes.data?.diff ?? '');
+
+        // Keep full-file rendering stable during refresh as well.
+        const preferredRef = target.scope === 'untracked' ? 'WORKTREE' : 'HEAD';
+        let sourceRes = await withTimeout(
+          API.sessions.getFileContent(sessionId, { filePath, ref: preferredRef, maxBytes: 1024 * 1024 }),
+          15_000,
+          'Load file content'
+        );
+        if (!sourceRes.success && preferredRef !== 'WORKTREE') {
+          sourceRes = await withTimeout(
+            API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+            15_000,
+            'Load file content'
+          );
+        }
+        setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : '');
       } else {
         const response = await withTimeout(API.sessions.getDiff(sessionId, target), 15_000, 'Load diff');
         if (response.success && response.data) {
@@ -196,7 +212,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
     } finally {
       setLoading(false);
     }
-  }, [sessionId, target, onClose]);
+  }, [sessionId, target, filePath, onClose]);
 
   const handleCopyPath = useCallback(async () => {
     if (!filePath) return;
