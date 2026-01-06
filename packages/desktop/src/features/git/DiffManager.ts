@@ -332,6 +332,7 @@ export class GitDiffManager {
       argv: ['git', 'cat-file', '-e', object],
       op: 'read',
       recordTimeline: false,
+      throwOnError: false,
       meta: { source: 'gitDiff', operation: 'cat-file-exists', object },
       timeoutMs: 15_000,
     });

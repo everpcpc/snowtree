@@ -700,7 +700,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       if (selectedIsUncommitted) {
         fetchFiles();
       }
-    }, 650);
+    }, 200);
   }, [session.id, fetchCommits, fetchFiles, selectedIsUncommitted]);
 
   // Refresh once after a run completes (running -> waiting/error/etc).
@@ -720,8 +720,12 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
   // Only refresh on stable, state-changing signals. `state`/`lastChecked` can churn even when nothing
   // meaningful changed (e.g. transient errors or polling), which would cause refresh loops.
   const gitSig = [
+    String(session.gitStatus?.state ?? ''),
     String(Number(session.gitStatus?.ahead ?? 0)),
     String(Number(session.gitStatus?.behind ?? 0)),
+    String(Number(session.gitStatus?.filesChanged ?? 0)),
+    String(Number(session.gitStatus?.additions ?? 0)),
+    String(Number(session.gitStatus?.deletions ?? 0)),
     String(Boolean(session.gitStatus?.hasUncommittedChanges)),
     String(Boolean(session.gitStatus?.hasUntrackedFiles)),
   ].join('|');
