@@ -47,6 +47,34 @@ describe('ZedDiffViewer', () => {
     expect(screen.getByTestId('diff-viewer-zed')).toBeInTheDocument();
   });
 
+  it('expands modified files to full file when fileSources is provided', () => {
+    const diff = `diff --git a/a.txt b/a.txt
+index 1234567..abcdefg 100644
+--- a/a.txt
++++ b/a.txt
+@@ -2,1 +2,1 @@
+-old
++new`;
+
+    const { container } = render(<ZedDiffViewer diff={diff} fileSources={{ 'a.txt': 'one\nold\nthree' }} />);
+    // one (context) + old (delete) + new (insert) + three (context)
+    expect(container.querySelectorAll('tr.diff-line')).toHaveLength(4);
+  });
+
+  it('does not duplicate content when expanding a new file diff', () => {
+    const diff = `diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..abcdefg
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1,2 @@
++first
++second`;
+
+    const { container } = render(<ZedDiffViewer diff={diff} fileSources={{ 'new.txt': 'first\nsecond' }} />);
+    expect(container.querySelectorAll('tr.diff-line')).toHaveLength(2);
+  });
+
   it('stages a hunk when scope is unstaged', async () => {
     (API.sessions.stageHunk as any).mockResolvedValue({ success: true, data: { success: true } });
     render(

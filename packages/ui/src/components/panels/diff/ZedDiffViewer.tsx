@@ -76,6 +76,12 @@ function expandToFullFile(hunks: HunkData[], source: string): HunkData[] {
     return all ? [all] : [];
   }
 
+  // New file diffs typically use @@ -0,0 +1,N @@ and already contain the full content as insertions.
+  // Expanding using the worktree content would duplicate the file as "plain context" below the inserted hunk.
+  if (normalized.some((h) => h.oldStart === 0 && h.oldLines === 0)) {
+    return normalized;
+  }
+
   const output: HunkData[] = [];
   let oldCursor = 1;
   let delta = 0; // newLine = oldLine + delta for unchanged lines

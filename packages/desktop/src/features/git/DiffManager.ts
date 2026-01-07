@@ -37,7 +37,9 @@ export type WorkingTreeGroups = {
 const MAX_UNTRACKED_FILE_BYTES = 1024 * 1024; // 1MB
 
 export class GitDiffManager {
-  private readonly WORKING_DIFF_CONTEXT_LINES = 3; // Zed/Git default context
+  // Zed-like hunking: a hunk is only the contiguous changed lines.
+  // Any unchanged line should start a new hunk, so we request zero context from git.
+  private readonly WORKING_DIFF_CONTEXT_LINES = 0;
   constructor(
     private gitExecutor: GitExecutor,
     private logger?: Logger,
