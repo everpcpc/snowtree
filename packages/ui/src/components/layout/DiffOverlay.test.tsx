@@ -116,4 +116,42 @@ describe('DiffOverlay', () => {
       expect((API.sessions.getDiff as any).mock.calls.length).toBeGreaterThan(callsBefore);
     });
   });
+
+  it('loads file sources for project diff view (working/all)', async () => {
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      if (target?.kind === 'working' && target?.scope === 'all') {
+        return Promise.resolve({
+          success: true,
+          data: {
+            diff: 'diff --git a/tracked.txt b/tracked.txt\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n',
+            changedFiles: ['tracked.txt', 'new.txt'],
+            workingTree: {
+              staged: [],
+              unstaged: [{ path: 'tracked.txt', type: 'modified', additions: 1, deletions: 1 }],
+              untracked: [{ path: 'new.txt', type: 'added', additions: 1, deletions: 0 }],
+            },
+          },
+        });
+      }
+      return Promise.resolve({ success: true, data: { diff: '' } });
+    });
+
+    (API.sessions.getFileContent as any).mockResolvedValue({ success: true, data: { content: 'x\ny\n' } });
+
+    render(
+      <DiffOverlay
+        isOpen={true}
+        sessionId="s1"
+        filePath={null as any}
+        target={{ kind: 'working', scope: 'all' } as any}
+        onClose={vi.fn()}
+        files={[]}
+      />
+    );
+
+    await waitFor(() => {
+      expect(API.sessions.getFileContent).toHaveBeenCalledWith('s1', expect.objectContaining({ filePath: 'tracked.txt', ref: 'HEAD' }));
+      expect(API.sessions.getFileContent).toHaveBeenCalledWith('s1', expect.objectContaining({ filePath: 'new.txt', ref: 'WORKTREE' }));
+    });
+  });
 });

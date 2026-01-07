@@ -44,6 +44,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
   const [stagedDiff, setStagedDiff] = useState<string | null>(null);
   const [unstagedDiff, setUnstagedDiff] = useState<string | null>(null);
   const [fileSource, setFileSource] = useState<string | null>(null);
+  const [fileSources, setFileSources] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -85,6 +86,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
       setStagedDiff(null);
       setUnstagedDiff(null);
       setFileSource(null);
+      setFileSources(null);
       return;
     }
 
@@ -93,6 +95,97 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
       setError(null);
 
       try {
+        const workingScope = target.kind === 'working' ? ((target as any).scope || 'all') : null;
+
+        if (target.kind === 'working') {
+          // For working tree, always load all + staged + unstaged diffs so we can determine per-hunk status in one view (Zed-like).
+          const [allRes, stagedRes, unstagedRes] = await Promise.all([
+            withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'all' } as any), 15_000, 'Load diff'),
+            withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'staged' } as any), 15_000, 'Load staged diff'),
+            withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'unstaged' } as any), 15_000, 'Load unstaged diff'),
+          ]);
+
+          if (!allRes.success) throw new Error(allRes.error || 'Failed to load diff');
+          if (!stagedRes.success) throw new Error(stagedRes.error || 'Failed to load staged diff');
+          if (!unstagedRes.success) throw new Error(unstagedRes.error || 'Failed to load unstaged diff');
+
+          setDiff(allRes.data?.diff ?? '');
+          setStagedDiff(stagedRes.data?.diff ?? '');
+          setUnstagedDiff(unstagedRes.data?.diff ?? '');
+
+          // Single-file view: expand to full file using a best-effort file source.
+          if (filePath) {
+            setFileSources(null);
+            const preferredRef = workingScope === 'untracked' ? 'WORKTREE' : 'HEAD';
+            let sourceRes = await withTimeout(
+              API.sessions.getFileContent(sessionId, { filePath, ref: preferredRef, maxBytes: 1024 * 1024 }),
+              15_000,
+              'Load file content'
+            );
+            if (!sourceRes.success && preferredRef !== 'WORKTREE') {
+              sourceRes = await withTimeout(
+                API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+                15_000,
+                'Load file content'
+              );
+            }
+            setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : null);
+          } else {
+            // Project diff view: expand each file to include unchanged lines between hunks (Zed-like).
+            setFileSource(null);
+
+            const wt = (allRes.data as { workingTree?: unknown } | undefined)?.workingTree as
+              | { staged: Array<{ path: string; isNew?: boolean }>; unstaged: Array<{ path: string; isNew?: boolean }>; untracked: Array<{ path: string; isNew?: boolean }> }
+              | undefined;
+
+            const untracked = new Set<string>([
+              ...(wt?.untracked || []).map((f) => f.path),
+              ...(wt?.staged || []).filter((f) => Boolean((f as any).isNew)).map((f) => f.path),
+            ]);
+
+            const changed = Array.isArray((allRes.data as { changedFiles?: unknown } | undefined)?.changedFiles)
+              ? (((allRes.data as { changedFiles?: unknown }).changedFiles as unknown[]) || []).filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+              : [];
+
+            const maxFiles = 80;
+            const targets = changed.slice(0, maxFiles);
+            const results: Record<string, string> = {};
+
+            // Small concurrency pool to avoid UI stalls.
+            const concurrency = 6;
+            let cursor = 0;
+            const workers = Array.from({ length: concurrency }).map(async () => {
+              while (cursor < targets.length) {
+                const idx = cursor++;
+                const p = targets[idx];
+                const prefer = untracked.has(p) ? 'WORKTREE' : 'HEAD';
+                try {
+                  let r = await withTimeout(
+                    API.sessions.getFileContent(sessionId, { filePath: p, ref: prefer as any, maxBytes: 1024 * 1024 }),
+                    15_000,
+                    'Load file content'
+                  );
+                  if (!r.success && prefer !== 'WORKTREE') {
+                    r = await withTimeout(
+                      API.sessions.getFileContent(sessionId, { filePath: p, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+                      15_000,
+                      'Load file content'
+                    );
+                  }
+                  if (r.success) {
+                    results[p] = r.data?.content ?? '';
+                  }
+                } catch {
+                  // best-effort
+                }
+              }
+            });
+            await Promise.all(workers);
+            setFileSources(Object.keys(results).length > 0 ? results : null);
+          }
+          return;
+        }
+
         if (target.kind === 'working' && filePath) {
           const [allRes, stagedRes, unstagedRes] = await Promise.all([
             withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'all' } as any), 15_000, 'Load diff'),
@@ -122,7 +215,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
               'Load file content'
             );
           }
-          setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : '');
+          setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : null);
         } else {
           const response = await withTimeout(API.sessions.getDiff(sessionId, target), 15_000, 'Load diff');
           if (response.success && response.data) {
@@ -130,6 +223,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
             setStagedDiff(null);
             setUnstagedDiff(null);
             setFileSource(null);
+            setFileSources(null);
           } else {
             const message = response.error || 'Failed to load diff';
             const isStaleCommit =
@@ -159,7 +253,9 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
     setError(null);
 
     try {
-      if (target.kind === 'working' && filePath) {
+      const workingScope = target.kind === 'working' ? ((target as any).scope || 'all') : null;
+
+      if (target.kind === 'working') {
         const [allRes, stagedRes, unstagedRes] = await Promise.all([
           withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'all' } as any), 15_000, 'Load diff'),
           withTimeout(API.sessions.getDiff(sessionId, { kind: 'working', scope: 'staged' } as any), 15_000, 'Load staged diff'),
@@ -174,21 +270,73 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
         setStagedDiff(stagedRes.data?.diff ?? '');
         setUnstagedDiff(unstagedRes.data?.diff ?? '');
 
-        // Keep full-file rendering stable during refresh as well.
-        const preferredRef = target.scope === 'untracked' ? 'WORKTREE' : 'HEAD';
-        let sourceRes = await withTimeout(
-          API.sessions.getFileContent(sessionId, { filePath, ref: preferredRef, maxBytes: 1024 * 1024 }),
-          15_000,
-          'Load file content'
-        );
-        if (!sourceRes.success && preferredRef !== 'WORKTREE') {
-          sourceRes = await withTimeout(
-            API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+        if (filePath) {
+          setFileSources(null);
+          const preferredRef = workingScope === 'untracked' ? 'WORKTREE' : 'HEAD';
+          let sourceRes = await withTimeout(
+            API.sessions.getFileContent(sessionId, { filePath, ref: preferredRef, maxBytes: 1024 * 1024 }),
             15_000,
             'Load file content'
           );
+          if (!sourceRes.success && preferredRef !== 'WORKTREE') {
+            sourceRes = await withTimeout(
+              API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+              15_000,
+              'Load file content'
+            );
+          }
+          setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : null);
+        } else {
+          setFileSource(null);
+
+          const wt = (allRes.data as { workingTree?: unknown } | undefined)?.workingTree as
+            | { staged: Array<{ path: string; isNew?: boolean }>; unstaged: Array<{ path: string; isNew?: boolean }>; untracked: Array<{ path: string; isNew?: boolean }> }
+            | undefined;
+
+          const untracked = new Set<string>([
+            ...(wt?.untracked || []).map((f) => f.path),
+            ...(wt?.staged || []).filter((f) => Boolean((f as any).isNew)).map((f) => f.path),
+          ]);
+
+          const changed = Array.isArray((allRes.data as { changedFiles?: unknown } | undefined)?.changedFiles)
+            ? (((allRes.data as { changedFiles?: unknown }).changedFiles as unknown[]) || []).filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+            : [];
+
+          const maxFiles = 80;
+          const targets = changed.slice(0, maxFiles);
+          const results: Record<string, string> = {};
+          const concurrency = 6;
+          let cursor = 0;
+          const workers = Array.from({ length: concurrency }).map(async () => {
+            while (cursor < targets.length) {
+              const idx = cursor++;
+              const p = targets[idx];
+              const prefer = untracked.has(p) ? 'WORKTREE' : 'HEAD';
+              try {
+                let r = await withTimeout(
+                  API.sessions.getFileContent(sessionId, { filePath: p, ref: prefer as any, maxBytes: 1024 * 1024 }),
+                  15_000,
+                  'Load file content'
+                );
+                if (!r.success && prefer !== 'WORKTREE') {
+                  r = await withTimeout(
+                    API.sessions.getFileContent(sessionId, { filePath: p, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+                    15_000,
+                    'Load file content'
+                  );
+                }
+                if (r.success) {
+                  results[p] = r.data?.content ?? '';
+                }
+              } catch {
+                // best-effort
+              }
+            }
+          });
+          await Promise.all(workers);
+          setFileSources(Object.keys(results).length > 0 ? results : null);
         }
-        setFileSource(sourceRes.success ? (sourceRes.data?.content ?? '') : '');
+        return;
       } else {
         const response = await withTimeout(API.sessions.getDiff(sessionId, target), 15_000, 'Load diff');
         if (response.success && response.data) {
@@ -196,6 +344,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
           setStagedDiff(null);
           setUnstagedDiff(null);
           setFileSource(null);
+          setFileSources(null);
         } else {
           const message = response.error || 'Failed to load diff';
           const isStaleCommit =
@@ -469,7 +618,7 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
             currentScope={target?.kind === 'working' ? (target.scope as any) : undefined}
             stagedDiff={stagedDiff ?? undefined}
             unstagedDiff={unstagedDiff ?? undefined}
-            fileSources={filePath && fileSource != null ? { [filePath]: fileSource } : undefined}
+            fileSources={filePath && fileSource != null ? { [filePath]: fileSource } : (fileSources ?? undefined)}
             fileOrder={viewerFiles.length > 0 ? viewerFiles.map((f) => f.path) : undefined}
             onChanged={handleRefresh}
           />

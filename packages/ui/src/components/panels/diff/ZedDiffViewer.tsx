@@ -184,8 +184,9 @@ export const ZedDiffViewer: React.FC<{
 
     return ordered.map((f) => {
       const path = toFilePath(f);
-      const source = fileSources?.[path];
-      const expandedHunks = source ? expandToFullFile(f.hunks || [], source) : normalizeHunks(f.hunks || []);
+      const hasSource = Boolean(fileSources && Object.prototype.hasOwnProperty.call(fileSources, path));
+      const source = hasSource ? (fileSources as Record<string, string>)[path] : undefined;
+      const expandedHunks = hasSource ? expandToFullFile(f.hunks || [], source || '') : normalizeHunks(f.hunks || []);
 
       const hunks = expandedHunks.map((hunk, idx) => {
         const sig = hunkSignature(hunk);
