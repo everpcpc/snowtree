@@ -471,11 +471,16 @@ export const ZedDiffViewer: React.FC<{
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-hunk-frame-color) 36%, transparent);
             transition: opacity 110ms ease;
           }
-          /* Zed-like: staged hunks have a persistent frame to distinguish them from unstaged hunks. */
-          .st-diff-table .diff-hunk:has(.st-hunk-status--staged):has(.diff-code-insert, .diff-code-delete)::after { opacity: 1; }
-          .st-diff-table .diff-hunk:has(.diff-code-insert, .diff-code-delete):hover::after {
+          /* Zed-like: staged_hollow -> staged has border; unstaged filled -> no border even on hover. */
+          .st-diff-table .diff-hunk:has(.st-hunk-status--staged):has(.diff-code-insert, .diff-code-delete)::after {
             opacity: 1;
+          }
+          .st-diff-table .diff-hunk:has(.st-hunk-status--staged):has(.diff-code-insert, .diff-code-delete):hover::after {
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-hunk-frame-color) 48%, transparent);
+          }
+          .st-diff-table .diff-hunk:has(.st-hunk-status--unstaged):has(.diff-code-insert, .diff-code-delete)::after,
+          .st-diff-table .diff-hunk:has(.st-hunk-status--unstaged):has(.diff-code-insert, .diff-code-delete):hover::after {
+            opacity: 0;
           }
 
           .st-diff-table .diff-hunk:has(.diff-code-insert, .diff-code-delete) tr td {
@@ -497,8 +502,11 @@ export const ZedDiffViewer: React.FC<{
             );
           }
           /* Extra contrast on hover (more Zed-like). */
-          .st-diff-table .diff-hunk:has(.diff-code-insert, .diff-code-delete):hover {
+          .st-diff-table .diff-hunk:has(.st-hunk-status--unstaged):has(.diff-code-insert, .diff-code-delete):hover {
             filter: saturate(1.04) brightness(1.02);
+          }
+          .st-diff-table .diff-hunk:has(.st-hunk-status--staged):has(.diff-code-insert, .diff-code-delete):hover {
+            filter: saturate(1.02) brightness(1.01);
           }
 
           /* The widget row is used only as an "anchor"; it should not consume height. */

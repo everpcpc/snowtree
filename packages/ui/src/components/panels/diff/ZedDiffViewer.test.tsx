@@ -163,6 +163,6 @@ describe('ZedDiffViewer', () => {
     );
     const css = container.querySelector('style')?.textContent || '';
     expect(css).toContain('st-hunk-status--staged');
-    expect(css).toContain('Zed-like: staged hunks have a persistent frame');
+    expect(css).toContain('Zed-like: staged_hollow -> staged has border');
   });
 });
