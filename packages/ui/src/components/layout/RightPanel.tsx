@@ -923,16 +923,6 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
     return [...tracked, ...untracked];
   }, [trackedList, untrackedList]);
 
-  const stageAllState: TriState = useMemo(() => {
-    if (!workingTree) return 'unchecked';
-    const hasChanges = workingTree.staged.length + workingTree.unstaged.length + workingTree.untracked.length > 0;
-    if (!hasChanges) return 'unchecked';
-    const allStaged = workingTree.unstaged.length === 0 && workingTree.untracked.length === 0 && workingTree.staged.length > 0;
-    if (allStaged) return 'checked';
-    const someStaged = workingTree.staged.length > 0;
-    return someStaged ? 'indeterminate' : 'unchecked';
-  }, [workingTree]);
-
   const totalCommits = commits.length;
   const totalChanges = selectedIsUncommitted
     ? (workingTree?.staged.length || 0) + (workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0)
@@ -948,6 +938,8 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       : null;
 
   const stagedFileCount = workingTree?.staged.length || 0;
+  const canStageAll = Boolean((workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0));
+  const canUnstageAll = Boolean(workingTree?.staged.length || 0);
 
   return (
     <div
@@ -1166,22 +1158,20 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
           <div className="flex items-center gap-2">
             {selectedIsUncommitted && totalChanges > 0 && (
               <div className="flex items-center gap-2">
-                <TriStateCheckbox
-                  state={stageAllState}
-                  disabled={isLoading || isStageChanging}
-                  onToggle={() => {
-                    const hasUnstagedOrUntracked = Boolean((workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0));
-                    void handleChangeAllStage(hasUnstagedOrUntracked);
-                  }}
-                  title="Stage/Unstage all changes"
-                  testId="right-panel-stage-all"
-                />
                 <button
                   type="button"
-                  disabled={isLoading || isStageChanging}
+                  data-testid="right-panel-stage-all"
+                  disabled={isLoading || isStageChanging || !canStageAll}
                   onClick={() => {
-                    const hasUnstagedOrUntracked = Boolean((workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0));
-                    void handleChangeAllStage(hasUnstagedOrUntracked);
+                    if (!canStageAll) return;
+                    if (workingTree) {
+                      setWorkingTree({
+                        staged: [...workingTree.staged, ...workingTree.unstaged, ...workingTree.untracked],
+                        unstaged: [],
+                        untracked: [],
+                      });
+                    }
+                    void handleChangeAllStage(true);
                   }}
                   className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
                   style={{
@@ -1189,9 +1179,36 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
                     backgroundColor: colors.bg.hover,
                     border: `1px solid ${colors.border}`,
                   }}
-                  title="Stage/Unstage all changes"
+                  title="Stage all"
                 >
-                  {((workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0)) === 0 ? 'Unstage All' : 'Stage All'}
+                  Stage All
+                </button>
+                <button
+                  type="button"
+                  data-testid="right-panel-unstage-all"
+                  disabled={isLoading || isStageChanging || !canUnstageAll}
+                  onClick={() => {
+                    if (!canUnstageAll) return;
+                    if (workingTree) {
+                      const newFiles = workingTree.staged.filter((f) => Boolean(f.isNew));
+                      const others = workingTree.staged.filter((f) => !Boolean(f.isNew));
+                      setWorkingTree({
+                        staged: [],
+                        unstaged: [...workingTree.unstaged, ...others],
+                        untracked: [...workingTree.untracked, ...newFiles],
+                      });
+                    }
+                    void handleChangeAllStage(false);
+                  }}
+                  className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
+                  style={{
+                    color: colors.text.primary,
+                    backgroundColor: colors.bg.hover,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                  title="Unstage all"
+                >
+                  Unstage All
                 </button>
               </div>
             )}

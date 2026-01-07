@@ -137,6 +137,20 @@ describe('RightPanel - Zed-style Changes list', () => {
     });
   });
 
+  it('unstages all via header controls', async () => {
+    render(<RightPanel {...mockProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-panel-unstage-all')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('right-panel-unstage-all'));
+
+    await waitFor(() => {
+      expect(API.sessions.changeAllStage).toHaveBeenCalledWith('test-session', { stage: false });
+    });
+  });
+
   it('handles empty groups gracefully', async () => {
     (API.sessions.getDiff as any).mockResolvedValue({
       success: true,
