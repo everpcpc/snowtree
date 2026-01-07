@@ -396,8 +396,8 @@ export const ZedDiffViewer: React.FC<{
             --st-diff-line-height: 20px;
             /* Zed-like hunk padding (blank line feel). */
             --st-diff-hunk-pad-y: 30px;
-            /* Zed-like hunk rounding. */
-            --st-diff-hunk-radius: 16px;
+            /* Zed-like: square hunks (no rounding). */
+            --st-diff-hunk-radius: 0px;
           }
 
           .st-diff-table.diff { table-layout: fixed; width: 100%; }
@@ -454,7 +454,7 @@ export const ZedDiffViewer: React.FC<{
             top: 6px;
             bottom: 6px;
             width: 4px;
-            border-radius: 999px;
+            border-radius: 0;
             background: var(--st-hunk-marker-color);
             opacity: 0.85;
             pointer-events: none;
@@ -463,7 +463,7 @@ export const ZedDiffViewer: React.FC<{
           .st-diff-table .diff-hunk:has(.diff-code-insert, .diff-code-delete)::after {
             content: '';
             position: absolute;
-            inset: 2px;
+            inset: 0;
             border-radius: var(--st-diff-hunk-radius);
             pointer-events: none;
             opacity: 0;
