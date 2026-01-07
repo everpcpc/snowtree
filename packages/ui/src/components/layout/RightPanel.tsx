@@ -90,6 +90,9 @@ const StackConnector: React.FC<{ accent?: boolean }> = React.memo(({ accent }) =
 
 StackConnector.displayName = 'StackConnector';
 
+// Zed/Git-like ordering: locale-independent, matches git path sorting.
+const compareGitPaths = (a: string, b: string) => (a === b ? 0 : a < b ? -1 : 1);
+
 interface Commit {
   id: number;
   commit_message: string;
@@ -891,7 +894,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       merged.push({ file: { path, type, additions, deletions, isNew }, stageState });
     }
 
-    merged.sort((a, b) => a.file.path.localeCompare(b.file.path));
+    merged.sort((a, b) => compareGitPaths(a.file.path, b.file.path));
     return merged;
   }, [workingTree]);
 
@@ -908,7 +911,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       byPath.set(x.file.path, x);
     }
 
-    const merged = Array.from(byPath.values()).sort((a, b) => a.file.path.localeCompare(b.file.path));
+    const merged = Array.from(byPath.values()).sort((a, b) => compareGitPaths(a.file.path, b.file.path));
     return merged;
   }, [trackedFiles, workingTree]);
 

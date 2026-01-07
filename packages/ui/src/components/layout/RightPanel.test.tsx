@@ -196,4 +196,54 @@ describe('RightPanel - Zed-style Changes list', () => {
       expect((API.sessions.getDiff as any).mock.calls.length).toBeGreaterThan(1);
     });
   });
+
+  it('sorts paths in a git-like (codepoint) order', async () => {
+    (API.sessions.getDiff as any).mockResolvedValue({
+      success: true,
+      data: {
+        workingTree: {
+          staged: [
+            { path: '_config.yml', type: 'modified', additions: 3, deletions: 2 },
+          ],
+          unstaged: [
+            { path: '.github/workflows/pages.yml', type: 'modified', additions: 11, deletions: 5 },
+            { path: 'package.json', type: 'modified', additions: 4, deletions: 1 },
+            { path: 'source/about/index.md', type: 'modified', additions: 3, deletions: 2 },
+          ],
+          untracked: [
+            { path: 'dd.txt', type: 'added', additions: 6, deletions: 0 },
+            { path: 'WORKTREE_TEST.md', type: 'added', additions: 29, deletions: 0 },
+          ],
+        },
+      },
+    });
+
+    const { container } = render(<RightPanel {...mockProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-panel-file-tracked-_config.yml')).toBeInTheDocument();
+      expect(screen.getByTestId('right-panel-file-tracked-.github/workflows/pages.yml')).toBeInTheDocument();
+    });
+
+    const trackedEls = Array.from(
+      container.querySelectorAll('button[data-testid^="right-panel-file-tracked-"]')
+    ).filter((el) => !el.getAttribute('data-testid')?.endsWith('-checkbox'));
+
+    const trackedOrder = trackedEls.map((el) => el.getAttribute('data-testid'));
+    expect(trackedOrder).toEqual([
+      'right-panel-file-tracked-.github/workflows/pages.yml',
+      'right-panel-file-tracked-_config.yml',
+      'right-panel-file-tracked-package.json',
+      'right-panel-file-tracked-source/about/index.md',
+    ]);
+
+    const untrackedEls = Array.from(
+      container.querySelectorAll('button[data-testid^="right-panel-file-untracked-"]')
+    ).filter((el) => !el.getAttribute('data-testid')?.endsWith('-checkbox'));
+    const untrackedOrder = untrackedEls.map((el) => el.getAttribute('data-testid'));
+    expect(untrackedOrder).toEqual([
+      'right-panel-file-untracked-WORKTREE_TEST.md',
+      'right-panel-file-untracked-dd.txt',
+    ]);
+  });
 });
