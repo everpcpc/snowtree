@@ -301,9 +301,34 @@ export class GitStagingManager {
     }
   }
 
-  /**
-   * Get diff for a specific file and scope
-   */
+  async restoreFile(options: { worktreePath: string; sessionId: string; filePath: string }): Promise<StageLinesResult> {
+    try {
+      const filePath = options.filePath.trim();
+      if (!filePath) return { success: false, error: 'File path is required' };
+
+      const result = await this.gitExecutor.run({
+        sessionId: options.sessionId,
+        cwd: options.worktreePath,
+        argv: ['git', 'checkout', 'HEAD', '--', filePath],
+        op: 'write',
+        recordTimeline: true,
+        meta: { source: 'gitStaging', operation: 'restore-file', filePath },
+      });
+
+      if (result.exitCode !== 0) {
+        return { success: false, error: result.stderr || 'git checkout failed' };
+      }
+
+      this.statusManager.clearSessionCache(options.sessionId);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
   private async getFileDiff(
     worktreePath: string,
     filePath: string,

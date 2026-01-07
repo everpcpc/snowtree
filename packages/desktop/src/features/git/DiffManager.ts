@@ -133,6 +133,36 @@ export class GitDiffManager {
     return stdout.trim().length > 0;
   }
 
+  async getWorkingDiffStatsQuick(worktreePath: string, sessionId?: string | null): Promise<GitDiffStats> {
+    const [trackedResult, untrackedFiles] = await Promise.all([
+      this.runGit({
+        sessionId,
+        cwd: worktreePath,
+        argv: ['git', 'diff', '--shortstat', 'HEAD'],
+        meta: { source: 'gitDiff', operation: 'working-shortstat-quick' },
+      }),
+      this.getUntrackedFiles(worktreePath, sessionId),
+    ]);
+
+    const trackedStats = this.parseShortstat(trackedResult.stdout);
+
+    let untrackedAdditions = 0;
+    for (const file of untrackedFiles) {
+      try {
+        const buf = await readFile(join(worktreePath, file));
+        if (buf.byteLength <= MAX_UNTRACKED_FILE_BYTES) {
+          untrackedAdditions += buf.toString('utf8').split('\n').length;
+        }
+      } catch {}
+    }
+
+    return {
+      filesChanged: trackedStats.filesChanged + untrackedFiles.length,
+      additions: trackedStats.additions + untrackedAdditions,
+      deletions: trackedStats.deletions,
+    };
+  }
+
   private async getUntrackedFiles(worktreePath: string, sessionId?: string | null): Promise<string[]> {
     try {
       const { stdout } = await this.runGit({

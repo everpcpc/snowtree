@@ -108,6 +108,7 @@ export interface ElectronAPI {
     }) => Promise<IPCResponse<{ success: boolean; error?: string }>>;
     changeAllStage: (sessionId: string, options: { stage: boolean }) => Promise<IPCResponse<{ success: boolean; error?: string }>>;
     changeFileStage: (sessionId: string, options: { filePath: string; stage: boolean }) => Promise<IPCResponse<{ success: boolean; error?: string }>>;
+    restoreFile: (sessionId: string, options: { filePath: string }) => Promise<IPCResponse<{ success: boolean; error?: string }>>;
   };
 
   panels: {

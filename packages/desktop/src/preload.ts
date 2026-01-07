@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sessions:change-all-stage', sessionId, options),
     changeFileStage: (sessionId: string, options: { filePath: string; stage: boolean }): Promise<IPCResponse> =>
       ipcRenderer.invoke('sessions:change-file-stage', sessionId, options),
+    restoreFile: (sessionId: string, options: { filePath: string }): Promise<IPCResponse> =>
+      ipcRenderer.invoke('sessions:restore-file', sessionId, options),
   },
 
   panels: {

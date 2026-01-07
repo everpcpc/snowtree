@@ -120,6 +120,17 @@ export class API {
 
       return result.data || { success: true };
     },
+
+    async restoreFile(sessionId: string, options: { filePath: string }): Promise<{ success: boolean; error?: string }> {
+      requireElectron();
+      const result = await window.electronAPI.sessions.restoreFile(sessionId, options);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to restore file');
+      }
+
+      return result.data || { success: true };
+    },
   };
 
   static projects = {

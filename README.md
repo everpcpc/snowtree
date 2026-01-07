@@ -2,17 +2,25 @@
 
 **Run multiple AI coding sessions in parallel, each in its own git worktree.**
 
-## Why
+## Features
 
-- Single AI session blocks everything, manual worktree management is painful
-- Trust issues? No clear view of what AI changed
+- **Parallel AI Sessions** - Run Claude Code, Codex, or other AI tools simultaneously
+- **Auto-managed Worktrees** - Each session gets its own isolated git worktree
+- **Diff Review** - Review and approve AI changes before commit
+- **Session Timeline** - Full history of commands and changes
 
-**Snowtree solves this**:
+## Screenshots
 
-- Parallel AI sessions (Claude Code, Codex)
-- Auto-managed git worktrees
-- Review & approve changes before commit
-- Session history & timeline
+<table>
+  <tr>
+    <td align="center"><b>Chat Interface</b></td>
+    <td align="center"><b>Diff Review</b></td>
+  </tr>
+  <tr>
+    <td><img src="assets/chat.png" alt="Chat Interface" /></td>
+    <td><img src="assets/diff-review.png" alt="Diff Review" /></td>
+  </tr>
+</table>
 
 ## Installation
 

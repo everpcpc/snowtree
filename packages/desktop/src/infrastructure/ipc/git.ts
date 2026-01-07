@@ -33,7 +33,7 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       }));
 
       if (await gitDiffManager.hasChanges(session.worktreePath, sessionId)) {
-        const uncommittedDiff = await gitDiffManager.captureWorkingDirectoryDiff(session.worktreePath, sessionId);
+        const stats = await gitDiffManager.getWorkingDiffStatsQuick(session.worktreePath, sessionId);
         executions.unshift({
           id: 0,
           session_id: sessionId,
@@ -42,9 +42,9 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
           parent_commit_hash: null,
           commit_message: 'Uncommitted changes',
           timestamp: new Date().toISOString(),
-          stats_additions: uncommittedDiff.stats.additions,
-          stats_deletions: uncommittedDiff.stats.deletions,
-          stats_files_changed: uncommittedDiff.stats.filesChanged,
+          stats_additions: stats.additions,
+          stats_deletions: stats.deletions,
+          stats_files_changed: stats.filesChanged,
           author: 'You',
           comparison_branch: baseBranch,
           history_source: 'git',
@@ -318,6 +318,37 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to change file stage state',
+      };
+    }
+  });
+
+  ipcMain.handle('sessions:restore-file', async (_event, sessionId: string, options: {
+    filePath: string;
+  }) => {
+    try {
+      const session = sessionManager.getSession(sessionId);
+      if (!session?.worktreePath) {
+        return { success: false, error: 'Session worktree not found' };
+      }
+
+      const filePath = typeof options?.filePath === 'string' ? options.filePath.trim() : '';
+      if (!filePath) return { success: false, error: 'File path is required' };
+
+      const result = await gitStagingManager.restoreFile({
+        worktreePath: session.worktreePath,
+        sessionId,
+        filePath,
+      });
+
+      if (result.success) {
+        void gitStatusManager.refreshSessionGitStatus(sessionId, false);
+      }
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to restore file',
       };
     }
   });

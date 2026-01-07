@@ -25,7 +25,11 @@ type FileModel = {
 type HunkKind = 'added' | 'deleted' | 'modified';
 
 function toFilePath(raw: { newPath: string; oldPath: string }) {
-  return (raw.newPath || raw.oldPath || '(unknown)').trim() || '(unknown)';
+  const newPath = (raw.newPath || '').trim();
+  const oldPath = (raw.oldPath || '').trim();
+  if (newPath && newPath !== '/dev/null') return newPath;
+  if (oldPath && oldPath !== '/dev/null') return oldPath;
+  return '(unknown)';
 }
 
 function parseHunkHeader(content: string): { oldStart: number; oldLines: number; newStart: number; newLines: number } | null {
@@ -294,6 +298,25 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
     [sessionId, onChanged, setPending]
   );
 
+  const restoreFile = useCallback(
+    async (filePath: string, hunkKey: string) => {
+      if (!sessionId) return;
+      try {
+        setPending(hunkKey, true);
+        await API.sessions.restoreFile(sessionId, { filePath });
+        onChanged?.();
+      } catch (err) {
+        console.error('[Diff] Failed to restore file', { filePath, err });
+      } finally {
+        setPending(hunkKey, false);
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }
+    },
+    [sessionId, onChanged, setPending]
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentHunkIdx, setCurrentHunkIdx] = useState(0);
   const [focusedHunkKey, setFocusedHunkKey] = useState<string | null>(null);
@@ -463,7 +486,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                       stagedHeader ? 'staged' : unstagedHeader ? 'unstaged' : 'untracked';
 
                     const stageLabel = hunkStatus === 'staged' ? 'Unstage' : 'Stage';
-                    const canStageOrUnstage = Boolean(sessionId && hunkStatus !== 'untracked');
+                    const canStageOrUnstage = Boolean(sessionId);
                     const canRestore = Boolean(sessionId && (hunkStatus === 'staged' || hunkStatus === 'unstaged'));
                     const stageHeader = hunkStatus === 'staged' ? stagedHeader! : hunkStatus === 'unstaged' ? unstagedHeader! : null;
                     const restoreScope: 'staged' | 'unstaged' = hunkStatus === 'staged' ? 'staged' : 'unstaged';
@@ -498,6 +521,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               if (hunkStatus === 'untracked') return stageFile(file.path, true, hunkKey);
+                              if (file.diffType === 'delete') return stageFile(file.path, stageLabel === 'Stage', hunkKey);
                               if (!stageHeader) return;
                               stageOrUnstageHunk(file.path, stageLabel === 'Stage', stageHeader, hunkKey);
                             }}
@@ -510,14 +534,15 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                             <button
                               type="button"
                               data-testid="diff-hunk-restore"
-                              disabled={!canRestore || isPending || !stageHeader}
+                              disabled={!canRestore || isPending || (file.diffType !== 'delete' && !stageHeader)}
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
+                                if (file.diffType === 'delete') return restoreFile(file.path, hunkKey);
                                 if (!stageHeader) return;
                                 restoreHunk(file.path, restoreScope, stageHeader, hunkKey);
                               }}
                               className="st-diff-hunk-btn"
-                              title={canRestore ? 'Restore hunk' : 'Unavailable'}
+                              title={canRestore ? (file.diffType === 'delete' ? 'Restore file' : 'Restore hunk') : 'Unavailable'}
                             >
                               {isPending ? '…' : 'Restore'}
                             </button>

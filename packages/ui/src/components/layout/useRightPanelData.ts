@@ -192,8 +192,8 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
       setCommits(newCommits);
       setWorkingTree(newWorkingTree);
 
+      const hasUncommitted = newCommits.some((c) => c.id === 0);
       if (selectFirst) {
-        const hasUncommitted = newCommits.some((c) => c.id === 0);
         if (hasUncommitted) {
           setSelection({ kind: 'working' });
           setCommitFiles([]);
@@ -208,6 +208,8 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
             setCommitFiles([]);
           }
         }
+      } else if (hasUncommitted) {
+        setSelection((prev) => prev ?? { kind: 'working' });
       }
     } catch (err) {
       if (!controller.signal.aborted) {

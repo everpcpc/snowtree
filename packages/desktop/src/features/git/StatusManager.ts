@@ -148,48 +148,7 @@ export class GitStatusManager extends EventEmitter {
 
   private async getWorkingDiffStats(worktreePath: string, sessionId: string): Promise<{ filesChanged: number; additions: number; deletions: number }> {
     try {
-      const { stdout: trackedOut } = await this.gitExecutor.run({
-        sessionId,
-        cwd: worktreePath,
-        argv: ['git', 'diff', '--shortstat', 'HEAD'],
-        op: 'read',
-        meta: { source: 'gitStatus', operation: 'working-shortstat' },
-      });
-      const trackedStats = this.gitDiffManager.parseShortstat(trackedOut);
-
-      const { stdout: untrackedOut } = await this.gitExecutor.run({
-        sessionId,
-        cwd: worktreePath,
-        argv: ['git', 'ls-files', '--others', '--exclude-standard'],
-        op: 'read',
-        meta: { source: 'gitStatus', operation: 'untracked-list' },
-      });
-      
-      let untrackedAdditions = 0;
-      let untrackedFiles = 0;
-      const untrackedPaths = untrackedOut.trim().split('\n').filter(Boolean);
-      for (const filePath of untrackedPaths) {
-        try {
-          const { stdout: wcOut } = await this.gitExecutor.run({
-            sessionId,
-            cwd: worktreePath,
-            argv: ['wc', '-l', filePath],
-            op: 'read',
-            meta: { source: 'gitStatus', operation: 'untracked-linecount' },
-          });
-          const lines = parseInt(wcOut.trim().split(/\s+/)[0], 10) || 0;
-          untrackedAdditions += lines;
-          untrackedFiles++;
-        } catch {
-          untrackedFiles++;
-        }
-      }
-
-      return { 
-        filesChanged: trackedStats.filesChanged + untrackedFiles, 
-        additions: trackedStats.additions + untrackedAdditions, 
-        deletions: trackedStats.deletions 
-      };
+      return await this.gitDiffManager.getWorkingDiffStatsQuick(worktreePath, sessionId);
     } catch {
       return { filesChanged: 0, additions: 0, deletions: 0 };
     }
@@ -447,7 +406,7 @@ export class GitStatusManager extends EventEmitter {
             !updatedStatus.hasUncommittedChanges && !updatedStatus.hasUntrackedFiles && !summary.hasConflicts ? true : undefined;
           if (summary.hasConflicts) updatedStatus.state = 'conflict';
 
-          if (updatedStatus.hasUncommittedChanges) {
+          if (updatedStatus.hasUncommittedChanges || updatedStatus.hasUntrackedFiles) {
             const stats = await this.getWorkingDiffStats(session.worktreePath, sessionId);
             updatedStatus.additions = stats.additions;
             updatedStatus.deletions = stats.deletions;
@@ -773,7 +732,7 @@ export class GitStatusManager extends EventEmitter {
       
       // Get uncommitted changes details only if needed
       let uncommittedDiff = { stats: { filesChanged: 0, additions: 0, deletions: 0 } };
-      if (hasUncommittedChanges) {
+      if (hasUncommittedChanges || hasUntrackedFiles) {
         const quickStats = await this.getWorkingDiffStats(session.worktreePath, sessionId);
         uncommittedDiff = {
           stats: {
