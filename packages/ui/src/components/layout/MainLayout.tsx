@@ -4,7 +4,7 @@ import { useSessionStore } from '../../stores/sessionStore';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { ConversationPanel } from './ConversationPanel';
 import { InputBar } from './InputBar';
-import { RightPanel } from './RightPanel';
+import { RightPanel } from './RightPanel/index';
 import { DiffOverlay } from './DiffOverlay';
 import { useLayoutData } from './useLayoutData';
 import type { PendingMessage, FileChange } from './types';

@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { RightPanel } from './RightPanel';
-import type { RightPanelProps } from './types';
-import { API } from '../../utils/api';
+import { RightPanel } from './index';
+import type { RightPanelProps } from '../types';
+import { API } from '../../../utils/api';
 
-// Mock API
-vi.mock('../../utils/api', () => ({
+vi.mock('../../../utils/api', () => ({
   API: {
     sessions: {
       getExecutions: vi.fn(),
@@ -186,7 +185,6 @@ describe('RightPanel - Zed-style Changes list', () => {
     render(<RightPanel {...mockProps} />);
 
     await waitFor(() => {
-      // Should still render without errors
       expect(screen.getByText(/Changes/i)).toBeInTheDocument();
     });
   });

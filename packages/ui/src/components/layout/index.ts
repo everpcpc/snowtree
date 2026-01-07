@@ -2,7 +2,7 @@ export { MainLayout } from './MainLayout';
 export { WorkspaceHeader } from './WorkspaceHeader';
 export { ConversationPanel } from './ConversationPanel';
 export { InputBar } from './InputBar';
-export { RightPanel } from './RightPanel';
+export { RightPanel } from './RightPanel/index';
 export { DiffOverlay } from './DiffOverlay';
 export { useLayoutData } from './useLayoutData';
 export type {
