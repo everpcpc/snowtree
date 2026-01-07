@@ -1,9 +1,47 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Send, ChevronDown, Sparkles, Code2, Loader2 } from 'lucide-react';
-import type { InputBarProps, CLITool } from './types';
+import { ChevronDown, Sparkles, Code2, Loader2 } from 'lucide-react';
+import type { InputBarProps, CLITool, ImageAttachment } from './types';
 import { API } from '../../utils/api';
 import { withTimeout } from '../../utils/withTimeout';
 import type { TimelineEvent } from '../../types/timeline';
+
+const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+const KnightRiderSpinner: React.FC<{ color?: string }> = ({ color = 'var(--st-accent)' }) => {
+  const [frame, setFrame] = useState(0);
+  const width = 8;
+  const trailLength = 3;
+  const totalFrames = width * 2 - 2;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFrame((f) => (f + 1) % totalFrames);
+    }, 60);
+    return () => clearInterval(interval);
+  }, [totalFrames]);
+
+  const activePos = frame < width ? frame : (width * 2 - 2 - frame);
+
+  return (
+    <div className="flex gap-[1px] items-center">
+      {Array.from({ length: width }).map((_, i) => {
+        const distance = Math.abs(i - activePos);
+        const isActive = distance < trailLength;
+        const opacity = isActive ? 1 - (distance / trailLength) * 0.6 : 0.2;
+        return (
+          <div
+            key={i}
+            className="w-[5px] h-[5px] rounded-[1px]"
+            style={{
+              backgroundColor: color,
+              opacity,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
 type ToolAvailability = {
   available: boolean;
@@ -37,13 +75,6 @@ const formatCliVersion = (version?: string): string | undefined => {
   return match ? `v${match[1]}` : trimmed;
 };
 
-const subtitlePartsForTool = (tool: CLITool, args: { model?: string; level?: string; version?: string }): string[] => {
-  if (tool === 'claude') {
-    return [args.model, formatCliVersion(args.version)].filter(Boolean) as string[];
-  }
-  return [args.model, args.level, formatCliVersion(args.version)].filter(Boolean) as string[];
-};
-
 const CLISelector: React.FC<{
   selected: CLITool;
   onChange: (tool: CLITool) => void;
@@ -73,15 +104,8 @@ const CLISelector: React.FC<{
   ];
 
   const selectedTool = tools.find(t => t.id === selected) || tools[0];
-  const selectedSettings = settings[selected];
   const availabilityForSelected = availability?.[selected];
   const isSelectedAvailable = availabilityLoading ? true : (availabilityForSelected?.available ?? true);
-  const selectedSubtitleParts = subtitlePartsForTool(selected, {
-    model: selectedSettings.model,
-    level: selectedSettings.level,
-    version: availabilityForSelected?.version,
-  });
-  const selectedSubtitle = selectedSubtitleParts.join(' • ') || (settingsLoading ? 'Detecting…' : '');
   const isProbing = availabilityLoading || settingsLoading;
 
   return (
@@ -101,17 +125,11 @@ const CLISelector: React.FC<{
       >
         {selectedTool.icon}
         <span style={{ color: 'var(--st-text)' }}>{selectedTool.label}</span>
-        {selectedSubtitle && (
-          <span className="truncate max-w-[320px] st-text-faint" title={selectedSubtitle}>
-            {selectedSubtitle}
-          </span>
-        )}
         {isProbing && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--st-text-faint)' }} />}
         {!availabilityLoading && !isSelectedAvailable && <span className="text-[10px] uppercase tracking-wider st-text-faint">Unavailable</span>}
         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--st-text-faint)' }} />
       </button>
 
-      {/* Dropdown with animation */}
       <div
         className={`absolute bottom-full left-0 mb-1 border rounded-lg shadow-xl py-1 min-w-[280px] z-50 transition-all origin-bottom relative ${
           isOpen
@@ -127,51 +145,45 @@ const CLISelector: React.FC<{
             border: '1px solid color-mix(in srgb, var(--st-border) 70%, transparent)',
           }}
         />
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => {
-              const toolAvailability = availability?.[tool.id];
-              if (!availabilityLoading && toolAvailability && !toolAvailability.available) {
-                return;
-              }
-              onChange(tool.id);
-              setIsOpen(false);
-            }}
-            disabled={!availabilityLoading && !!availability?.[tool.id] && !availability[tool.id].available}
-            className={`relative w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors st-focus-ring ${
-              selected === tool.id ? 'st-selected' : 'st-hoverable'
-            } ${!availabilityLoading && !!availability?.[tool.id] && !availability[tool.id].available ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={!availabilityLoading && !availability?.[tool.id]?.available ? (availability?.[tool.id]?.error || `${tool.label} unavailable`) : undefined}
-          >
-            {tool.icon}
-            <div className="flex flex-col items-start min-w-0">
-              <div className="flex items-center gap-2">
-                <span style={{ color: 'var(--st-text)' }}>{tool.label}</span>
-                {isProbing && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--st-text-faint)' }} />}
-                {!availabilityLoading && availability?.[tool.id]?.available === false && (
-                  <span className="text-[10px] uppercase tracking-wider st-text-faint">Unavailable</span>
+        {tools.map((tool) => {
+          const toolSettings = settings[tool.id];
+          const toolAvailability = availability?.[tool.id];
+          const subtitle = [
+            toolSettings?.model,
+            tool.id === 'codex' ? toolSettings?.level : null,
+            formatCliVersion(toolAvailability?.version)
+          ].filter(Boolean).join(' · ');
+          
+          return (
+            <button
+              key={tool.id}
+              onClick={() => {
+                if (!availabilityLoading && toolAvailability && !toolAvailability.available) {
+                  return;
+                }
+                onChange(tool.id);
+                setIsOpen(false);
+              }}
+              disabled={!availabilityLoading && !!toolAvailability && !toolAvailability.available}
+              className={`relative w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors st-focus-ring ${
+                selected === tool.id ? 'st-selected' : 'st-hoverable'
+              } ${!availabilityLoading && toolAvailability && !toolAvailability.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {tool.icon}
+              <div className="flex flex-col items-start min-w-0">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: 'var(--st-text)' }}>{tool.label}</span>
+                  {!availabilityLoading && toolAvailability?.available === false && (
+                    <span className="text-[10px] uppercase tracking-wider st-text-faint">Unavailable</span>
+                  )}
+                </div>
+                {subtitle && (
+                  <span className="text-[11px] truncate max-w-[260px] st-text-faint">{subtitle}</span>
                 )}
               </div>
-              {(settings[tool.id]?.model || settings[tool.id]?.level || availability?.[tool.id]?.version || settingsLoading) && (
-                <span
-                  className="text-[11px] truncate max-w-[260px] st-text-faint"
-                  title={subtitlePartsForTool(tool.id, {
-                    model: settings[tool.id]?.model,
-                    level: settings[tool.id]?.level,
-                    version: availability?.[tool.id]?.version,
-                  }).join(' • ') || (settingsLoading ? 'Detecting…' : '')}
-                >
-                  {subtitlePartsForTool(tool.id, {
-                    model: settings[tool.id]?.model,
-                    level: settings[tool.id]?.level,
-                    version: availability?.[tool.id]?.version,
-                  }).join(' • ') || (settingsLoading ? 'Detecting…' : '')}
-                </span>
-              )}
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -190,36 +202,161 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
   placeholder = 'Message...',
   focusRequestId
 }) => {
-  const [input, setInput] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isEmpty, setIsEmpty] = useState(true);
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
+  const editorRef = useRef<HTMLDivElement>(null);
   const [aiToolsStatus, setAiToolsStatus] = useState<AiToolsStatus | null>(null);
-  const [aiToolsLoading, setAiToolsLoading] = useState(false);
-  const [toolSettingsProbeLoading, setToolSettingsProbeLoading] = useState(true);
-  const [toolSettingsTimelineLoading, setToolSettingsTimelineLoading] = useState(true);
+  const [, setAiToolsLoading] = useState(false);
+  const [, setToolSettingsProbeLoading] = useState(true);
+  const [, setToolSettingsTimelineLoading] = useState(true);
   const [toolSettings, setToolSettings] = useState<Record<CLITool, ToolDisplaySettings>>({
     claude: {},
     codex: {}
   });
   const [escPending, setEscPending] = useState(false);
   const escTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const imageIdCounter = useRef(0);
+
+  const getEditorText = useCallback(() => {
+    if (!editorRef.current) return '';
+    return editorRef.current.innerText || '';
+  }, []);
+
+  const checkEmpty = useCallback(() => {
+    const text = getEditorText().trim();
+    const hasPills = editorRef.current?.querySelector('[data-image-id]') !== null;
+    setIsEmpty(!text && !hasPills);
+  }, [getEditorText]);
+
+  const insertImageTag = useCallback((index: number, id: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const pill = document.createElement('span');
+    pill.textContent = `[Image ${index}]`;
+    pill.setAttribute('data-image-id', id);
+    pill.setAttribute('contenteditable', 'false');
+    pill.style.cssText = `
+      display: inline-block;
+      padding: 2px 6px;
+      margin: 0 2px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      background-color: color-mix(in srgb, var(--st-accent) 15%, transparent);
+      border: 1px solid var(--st-accent);
+      color: var(--st-accent);
+      user-select: all;
+      cursor: default;
+    `;
+
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(pill);
+      range.setStartAfter(pill);
+      range.setEndAfter(pill);
+      
+      const space = document.createTextNode(' ');
+      range.insertNode(space);
+      range.setStartAfter(space);
+      range.setEndAfter(space);
+      
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      editor.appendChild(pill);
+      editor.appendChild(document.createTextNode(' '));
+    }
+    
+    editor.focus();
+  }, []);
+
+  const addImageAttachment = useCallback((file: File): Promise<void> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const id = `img-${Date.now()}-${imageIdCounter.current++}`;
+        const imageIndex = imageAttachments.length + 1;
+        
+        setImageAttachments((prev) => [...prev, {
+          id,
+          filename: file.name || 'image.png',
+          mime: file.type || 'image/png',
+          dataUrl,
+        }]);
+        
+        insertImageTag(imageIndex, id);
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
+  }, [imageAttachments.length, insertImageTag]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const observer = new MutationObserver(() => {
+      const currentPills = editor.querySelectorAll('[data-image-id]');
+      const currentIds = new Set(Array.from(currentPills).map(p => p.getAttribute('data-image-id')));
+      
+      setImageAttachments((prev) => prev.filter((img) => currentIds.has(img.id)));
+      checkEmpty();
+    });
+
+    observer.observe(editor, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [checkEmpty]);
+
+  useEffect(() => {
+    const handleGlobalPaste = async (e: ClipboardEvent) => {
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      const items = Array.from(clipboardData.items);
+      const imageItems = items.filter((item) => ACCEPTED_IMAGE_TYPES.includes(item.type));
+
+      if (imageItems.length > 0) {
+        e.preventDefault();
+        for (const item of imageItems) {
+          const file = item.getAsFile();
+          if (file) await addImageAttachment(file);
+        }
+      }
+    };
+    document.addEventListener('paste', handleGlobalPaste);
+    return () => document.removeEventListener('paste', handleGlobalPaste);
+  }, [addImageAttachment]);
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim()) return;
+    const text = getEditorText().trim();
+    if (!text && imageAttachments.length === 0) return;
     if (isProcessing) return;
 
-    onSend(input.trim());
-    setInput('');
-  }, [input, isProcessing, onSend]);
+    onSend(text, imageAttachments.length > 0 ? imageAttachments : undefined);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '';
+    }
+    setImageAttachments([]);
+    setIsEmpty(true);
+  }, [getEditorText, imageAttachments, isProcessing, onSend]);
+
+  const isRunning = session.status === 'running' || session.status === 'initializing';
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (isRunning) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
-  }, [handleSubmit]);
-
-  const isRunning = session.status === 'running' || session.status === 'initializing';
+  }, [handleSubmit, isRunning]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -251,26 +388,36 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
           escTimeoutRef.current = setTimeout(() => {
             setEscPending(false);
             escTimeoutRef.current = null;
-          }, 3000);
+          }, 5000);
         }
       }
     };
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const tools: CLITool[] = ['claude', 'codex'];
+      const currentIndex = tools.indexOf(selectedTool);
+      const nextIndex = (currentIndex + 1) % tools.length;
+      onToolChange(tools[nextIndex]);
+    };
     window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isRunning, escPending, onCancel]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const next = Math.max(46, Math.min(textareaRef.current.scrollHeight, 140));
-      textareaRef.current.style.height = `${next}px`;
-    }
-  }, [input]);
+    document.addEventListener('keydown', handleTabKey, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      document.removeEventListener('keydown', handleTabKey, { capture: true });
+    };
+  }, [isRunning, escPending, onCancel, selectedTool, onToolChange]);
 
   useEffect(() => {
     if (!focusRequestId) return;
-    textareaRef.current?.focus();
+    editorRef.current?.focus();
   }, [focusRequestId]);
+
+  useEffect(() => {
+    editorRef.current?.focus();
+  }, []);
 
   const loadAvailability = useCallback(async (force?: boolean) => {
     setAiToolsLoading(true);
@@ -325,7 +472,6 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
         },
       }));
     } catch {
-      // ignore transient probe errors
     } finally {
       setToolSettingsProbeLoading(false);
     }
@@ -348,14 +494,12 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       if (lastClaude) applyTimelineEventToSettings(lastClaude);
       if (lastCodex) applyTimelineEventToSettings(lastCodex);
     } catch {
-      // ignore transient probe errors
     } finally {
       setToolSettingsTimelineLoading(false);
     }
   }, [session.id, applyTimelineEventToSettings]);
 
   useEffect(() => {
-    // Probe once per workspace to populate model/level even before the first run.
     void loadToolSettingsFromProbe();
     loadToolSettingsFromTimeline();
   }, [loadToolSettingsFromProbe, loadToolSettingsFromTimeline]);
@@ -371,79 +515,90 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     return () => unsubscribe();
   }, [session.id, applyTimelineEventToSettings]);
 
-  const selectedAvailable = aiToolsLoading ? true : (aiToolsStatus?.[selectedTool]?.available ?? true);
-  const canSubmit = input.trim() && !isProcessing && selectedAvailable;
-  const toolSettingsLoading = toolSettingsProbeLoading || toolSettingsTimelineLoading;
+  useEffect(() => {
+    void loadAvailability();
+  }, [loadAvailability]);
 
-  const handleOpenSelector = useCallback(() => {
-    void loadAvailability(true);
-    void loadToolSettingsFromProbe();
-    void loadToolSettingsFromTimeline();
-  }, [loadAvailability, loadToolSettingsFromProbe, loadToolSettingsFromTimeline]);
+  const agentColor = selectedTool === 'claude' ? '#c678dd' : '#56b6c2';
+  const agentName = selectedTool === 'claude' ? 'Claude' : 'Codex';
+  const selectedSettings = toolSettings[selectedTool];
+  const availabilityForSelected = aiToolsStatus?.[selectedTool];
+  const modelInfo = selectedSettings.model || '';
+  const levelInfo = selectedTool === 'codex' && selectedSettings.level ? selectedSettings.level : '';
+  const versionInfo = formatCliVersion(availabilityForSelected?.version) || '';
 
   return (
-    <div className="flex-shrink-0 border-t st-hairline st-surface px-3 py-2">
-      <div
-        className={`rounded-lg transition-all duration-150 ${isRunning ? 'opacity-60' : ''}`}
-        style={{
-          border: `1px solid ${isRunning ? 'var(--st-border)' : isFocused ? 'var(--st-accent)' : 'var(--st-border)'}`,
-          backgroundColor: 'var(--st-editor)',
-          boxShadow: isFocused && !isRunning
-            ? '0 0 0 3px color-mix(in srgb, var(--st-accent) 20%, transparent)'
-            : 'none',
-        }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          placeholder={isRunning ? 'Waiting for task to complete...' : placeholder}
-          disabled={isRunning}
-          className={`w-full px-3 pt-3 pb-2 bg-transparent text-[13px] focus:outline-none min-h-[46px] max-h-[160px] placeholder:text-[color:var(--st-text-faint)] placeholder:opacity-70 ${isRunning ? 'cursor-not-allowed' : ''}`}
-          style={{
-            color: 'var(--st-text)',
-            caretColor: 'var(--st-accent)',
-            lineHeight: '1.5',
-            resize: 'none',
-          }}
-          rows={1}
+    <div className="flex-shrink-0 px-4 py-2" style={{ backgroundColor: 'var(--st-bg)' }}>
+      <div className="flex">
+        <div
+          className="w-[2px] self-stretch transition-colors duration-150"
+          style={{ backgroundColor: isFocused || isRunning ? agentColor : 'var(--st-border-variant)' }}
         />
 
-        {/* Bottom toolbar */}
-        <div
-          className="flex items-center justify-between px-2 py-1.5"
-          style={{
-            borderTop: '1px solid color-mix(in srgb, var(--st-border) 50%, transparent)',
-          }}
-        >
-          <CLISelector
-            selected={selectedTool}
-            onChange={onToolChange}
-            disabled={isProcessing}
-            availability={aiToolsStatus}
-            availabilityLoading={aiToolsLoading}
-            settingsLoading={toolSettingsLoading}
-            settings={toolSettings}
-            onOpen={handleOpenSelector}
-          />
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div
+            className="ml-2 px-3 py-2"
+            style={{ backgroundColor: 'var(--st-editor)' }}
+          >
+            <div className="relative">
+              <div
+                ref={editorRef}
+                contentEditable
+                onKeyDown={handleKeyDown}
+                onInput={checkEmpty}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                className="w-full bg-transparent text-[13px] focus:outline-none min-h-[20px] max-h-[144px] overflow-y-auto"
+                style={{
+                  color: isRunning ? 'var(--st-text-faint)' : 'var(--st-text)',
+                  caretColor: isRunning ? 'transparent' : agentColor,
+                  lineHeight: '1.5',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              />
+              {isEmpty && !isRunning && (
+                <div
+                  className="absolute top-0 left-0 text-[13px] pointer-events-none"
+                  style={{ color: 'var(--st-text-faint)', opacity: 0.6 }}
+                >
+                  {placeholder}
+                </div>
+              )}
+            </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit}
-              className={`p-1.5 rounded transition-all duration-150 st-focus-ring ${
-                canSubmit ? 'st-hoverable' : 'cursor-not-allowed opacity-40'
-              }`}
-              style={{
-                color: canSubmit ? 'var(--st-accent)' : 'var(--st-text-faint)',
-              }}
-              title={!selectedAvailable ? `${selectedTool} unavailable` : 'Send (Enter)'}
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2 mt-2 text-[12px]">
+              <span style={{ color: agentColor }}>{agentName}</span>
+              {modelInfo && (
+                <span style={{ color: 'var(--st-text)' }}>{modelInfo}</span>
+              )}
+              {levelInfo && (
+                <span style={{ color: 'var(--st-text-faint)' }}>{levelInfo}</span>
+              )}
+              {versionInfo && (
+                <span style={{ color: 'var(--st-text-faint)' }}>{versionInfo}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between ml-2 mt-2 text-[11px]">
+            <div className="flex items-center gap-2">
+              {isRunning && (
+                <>
+                  <KnightRiderSpinner color={agentColor} />
+                  <span style={{ color: escPending ? 'var(--st-accent)' : 'var(--st-text)' }}>
+                    esc{' '}
+                    <span style={{ color: escPending ? 'var(--st-accent)' : 'var(--st-text-faint)' }}>
+                      {escPending ? 'again to interrupt' : 'interrupt'}
+                    </span>
+                  </span>
+                </>
+              )}
+            </div>
+            <span style={{ color: 'var(--st-text)' }}>
+              tab{' '}
+              <span style={{ color: 'var(--st-text-faint)' }}>switch agent</span>
+            </span>
           </div>
         </div>
       </div>

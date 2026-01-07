@@ -23,6 +23,7 @@ export interface WorkspaceHeaderProps {
 export interface PendingMessage {
   content: string;
   timestamp: string;
+  images?: ImageAttachment[];
 }
 
 export interface ConversationPanelProps {
@@ -30,12 +31,19 @@ export interface ConversationPanelProps {
   pendingMessage?: PendingMessage | null;
 }
 
+export interface ImageAttachment {
+  id: string;
+  filename: string;
+  mime: string;
+  dataUrl: string;
+}
+
 export interface InputBarProps {
   session: Session;
   panelId: string | null;
   selectedTool: CLITool;
   onToolChange: (tool: CLITool) => void;
-  onSend: (message: string) => void;
+  onSend: (message: string, images?: ImageAttachment[]) => void;
   onCancel: () => void;
   isProcessing: boolean;
   placeholder?: string;

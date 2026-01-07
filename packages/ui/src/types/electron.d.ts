@@ -113,7 +113,7 @@ export interface ElectronAPI {
   panels: {
     create: (request: { sessionId: string; type: 'claude' | 'codex'; name?: string }) => Promise<IPCResponse<ToolPanel>>;
     list: (sessionId: string) => Promise<IPCResponse<ToolPanel[]>>;
-    continue: (panelId: string, input: string, model?: string, options?: { skipCheckpointAutoCommit?: boolean }) => Promise<IPCResponse<unknown>>;
+    continue: (panelId: string, input: string, model?: string, options?: { skipCheckpointAutoCommit?: boolean }, images?: Array<{ id: string; filename: string; mime: string; dataUrl: string }>) => Promise<IPCResponse<unknown>>;
   };
 
   updater: {

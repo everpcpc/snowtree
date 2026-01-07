@@ -463,7 +463,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                       stagedHeader ? 'staged' : unstagedHeader ? 'unstaged' : 'untracked';
 
                     const stageLabel = hunkStatus === 'staged' ? 'Unstage' : 'Stage';
-                    const canStageOrUnstage = Boolean(sessionId && hunkStatus !== 'unknown');
+                    const canStageOrUnstage = Boolean(sessionId && hunkStatus !== 'untracked');
                     const canRestore = Boolean(sessionId && (hunkStatus === 'staged' || hunkStatus === 'unstaged'));
                     const stageHeader = hunkStatus === 'staged' ? stagedHeader! : hunkStatus === 'unstaged' ? unstagedHeader! : null;
                     const restoreScope: 'staged' | 'unstaged' = hunkStatus === 'staged' ? 'staged' : 'unstaged';
@@ -472,7 +472,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                         ? 'st-hunk-status--staged'
                         : hunkStatus === 'unstaged' || hunkStatus === 'untracked'
                           ? 'st-hunk-status--unstaged'
-                          : 'st-hunk-status--unknown';
+                          : '';
 
                     const kind = hunkKind(hunk);
                     const kindClass =
@@ -483,7 +483,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
 
                     const changeKey = getChangeKey(first);
 
-                    const element = isCommitView ? null : (
+                    const element: React.ReactElement | null = isCommitView ? null : (
                       <div data-testid="diff-hunk-controls" data-hunk-key={hunkKey} className={`st-diff-hunk-actions-anchor ${statusClass} ${kindClass} ${isFocused ? 'st-hunk-focused' : ''}`}>
                         {hunkStatus === 'staged' && (
                           <div className="st-hunk-staged-badge" aria-label="Hunk staged">
@@ -528,8 +528,8 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
 
                     return [changeKey, element] as const;
                   })
-                  .filter((e): e is readonly [string, React.ReactNode] => Boolean(e))
-              )}
+                  .filter((e): e is readonly [string, React.ReactElement | null] => e !== null)
+              ) as Record<string, React.ReactElement | null>}
             >
               {(hunks) => hunks.map((hunk) => <Hunk key={(hunk as any).__st_hunkKey as string} hunk={hunk} />)}
             </Diff>

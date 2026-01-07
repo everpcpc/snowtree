@@ -3,7 +3,7 @@ import { API } from '../../utils/api';
 import { withTimeout } from '../../utils/withTimeout';
 import type { Session } from '../../types/session';
 import type { ToolPanel } from '@snowtree/core/types/panels';
-import type { CLITool } from './types';
+import type { CLITool, ImageAttachment } from './types';
 
 interface UseLayoutDataResult {
   session: Session | null;
@@ -15,7 +15,7 @@ interface UseLayoutDataResult {
   loadError: string | null;
   reload: () => void;
   setSelectedTool: (tool: CLITool) => void;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, images?: ImageAttachment[]) => Promise<void>;
   sendMessageToTool: (tool: CLITool, message: string, options?: { skipCheckpointAutoCommit?: boolean }) => Promise<void>;
   cancelRequest: () => Promise<void>;
 }
@@ -184,7 +184,7 @@ export function useLayoutData(sessionId: string | null): UseLayoutDataResult {
     return panelToUse;
   }, [session, aiPanel]);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, images?: ImageAttachment[]) => {
     if (!session) return;
 
     setIsProcessing(true);
@@ -199,8 +199,7 @@ export function useLayoutData(sessionId: string | null): UseLayoutDataResult {
         return;
       }
 
-      // Use panels:continue which handles both starting fresh and continuing conversations
-      await window.electronAPI?.panels?.continue(panelToUse.id, message);
+      await window.electronAPI?.panels?.continue(panelToUse.id, message, undefined, undefined, images);
     } catch (error) {
       console.error('Failed to send message:', error);
       setIsProcessing(false);

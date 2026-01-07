@@ -54,7 +54,6 @@ function getPathSeparator(): string {
 export function getShellPath(): string {
   // In packaged apps, always refresh PATH on first call to avoid cached restricted PATH
   if (cachedPath && !isFirstCall) {
-    console.log('[ShellPath] Using cached PATH');
     return cachedPath;
   }
   isFirstCall = false;

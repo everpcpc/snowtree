@@ -150,7 +150,7 @@ export function registerSessionHandlers(ipcMain: IpcMain, services: AppServices)
     }
   });
 
-  ipcMain.handle('panels:continue', async (_event, panelId: string, input: string, _model?: string, _options?: { skipCheckpointAutoCommit?: boolean }) => {
+  ipcMain.handle('panels:continue', async (_event, panelId: string, input: string, _model?: string, _options?: { skipCheckpointAutoCommit?: boolean }, images?: Array<{ id: string; filename: string; mime: string; dataUrl: string }>) => {
     let sessionIdForError: string | null = null;
     try {
       const panel = panelManager.getPanel(panelId);
@@ -161,7 +161,11 @@ export function registerSessionHandlers(ipcMain: IpcMain, services: AppServices)
       sessionIdForError = session.id;
 
       sessionManager.updateSessionStatus(session.id, 'running');
-      sessionManager.addPanelConversationMessage(panelId, 'user', input);
+      
+      const messageContent = images && images.length > 0
+        ? `${input}\n\n[${images.length} image(s) attached]`
+        : input;
+      sessionManager.addPanelConversationMessage(panelId, 'user', messageContent);
 
       // IMPORTANT: PanelManager caches panel state; agent resume tokens are persisted via SessionManager/db.
       // Always read the latest persisted agent session id from the database to preserve conversation context.
