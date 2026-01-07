@@ -243,15 +243,15 @@ export const ZedDiffViewer: React.FC<{
     [sessionId, onChanged, setPending]
   );
 
-  const restoreHunk = useCallback(
-    async (filePath: string, scope: 'staged' | 'unstaged', hunkHeader: string, hunkKey: string) => {
+  const stageFile = useCallback(
+    async (filePath: string, stage: boolean, hunkKey: string) => {
       if (!sessionId) return;
       try {
         setPending(hunkKey, true);
-        await API.sessions.restoreHunk(sessionId, { filePath, scope, hunkHeader });
+        await API.sessions.changeFileStage(sessionId, { filePath, stage });
         onChanged?.();
       } catch (err) {
-        console.error('[Diff] Failed to restore hunk', { filePath, hunkHeader, err });
+        console.error(`[Diff] Failed to ${stage ? 'stage' : 'unstage'} file`, { filePath, err });
       } finally {
         setPending(hunkKey, false);
         if (document.activeElement instanceof HTMLElement) {
@@ -332,20 +332,18 @@ export const ZedDiffViewer: React.FC<{
                     const stagedHeader = stagedMap?.get(sig);
                     const unstagedHeader = unstagedMap?.get(sig);
 
-                    const hunkStatus: 'staged' | 'unstaged' | 'unknown' =
-                      stagedHeader ? 'staged' : unstagedHeader ? 'unstaged' : 'unknown';
+                    const hunkStatus: 'staged' | 'unstaged' | 'untracked' | 'unknown' =
+                      stagedHeader ? 'staged' : unstagedHeader ? 'unstaged' : currentScope === 'untracked' ? 'untracked' : 'unknown';
 
                     if (hunkStatus === 'unknown') return null;
 
                     const stageLabel = hunkStatus === 'staged' ? 'Unstage' : 'Stage';
                     const canStageOrUnstage = Boolean(sessionId && hunkStatus !== 'unknown');
-                    const canRestore = Boolean(sessionId && hunkStatus !== 'unknown');
-                    const stageHeader = hunkStatus === 'staged' ? stagedHeader! : unstagedHeader!;
-                    const restoreScope: 'staged' | 'unstaged' = hunkStatus === 'staged' ? 'staged' : 'unstaged';
+                    const stageHeader = hunkStatus === 'staged' ? stagedHeader! : hunkStatus === 'unstaged' ? unstagedHeader! : null;
                     const statusClass =
                       hunkStatus === 'staged'
                         ? 'st-hunk-status--staged'
-                        : hunkStatus === 'unstaged'
+                        : hunkStatus === 'unstaged' || hunkStatus === 'untracked'
                           ? 'st-hunk-status--unstaged'
                           : 'st-hunk-status--unknown';
 
@@ -360,27 +358,25 @@ export const ZedDiffViewer: React.FC<{
                     const element = (
                       <div data-testid="diff-hunk-controls" className={`st-diff-hunk-actions-anchor ${statusClass} ${kindClass}`}>
                         <div className="st-diff-hunk-actions">
+                          {hunkStatus === 'staged' && (
+                            <span className="st-hunk-badge" aria-label="Hunk staged">
+                              staged
+                            </span>
+                          )}
                           <button
                             type="button"
                             data-testid="diff-hunk-stage"
                             disabled={!canStageOrUnstage || isPending}
                             onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => stageOrUnstageHunk(file.path, stageLabel === 'Stage', stageHeader, hunkKey)}
+                            onClick={() => {
+                              if (hunkStatus === 'untracked') return stageFile(file.path, true, hunkKey);
+                              if (!stageHeader) return;
+                              stageOrUnstageHunk(file.path, stageLabel === 'Stage', stageHeader, hunkKey);
+                            }}
                             className="st-diff-hunk-btn"
-                            title={canStageOrUnstage ? `${stageLabel} hunk` : 'Unavailable'}
+                            title={canStageOrUnstage ? `${stageLabel} ${hunkStatus === 'untracked' ? 'file' : 'hunk'}` : 'Unavailable'}
                           >
                             {isPending ? '…' : stageLabel}
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="diff-hunk-restore"
-                            disabled={!canRestore || isPending}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => restoreHunk(file.path, restoreScope, stageHeader, hunkKey)}
-                            className="st-diff-hunk-btn"
-                            title={canRestore ? 'Restore hunk' : 'Unavailable'}
-                          >
-                            {isPending ? '…' : 'Restore'}
                           </button>
                         </div>
                       </div>
@@ -411,7 +407,7 @@ export const ZedDiffViewer: React.FC<{
           .st-diff-table .diff-line { font-size: 12px; line-height: 20px; }
           /* No grid lines (Zed-like). */
           .st-diff-table .diff-line td { border-bottom: 0; }
-          .st-diff-table .diff-gutter { color: var(--st-diff-gutter-fg); padding: 0 10px; border-right: 0; }
+          .st-diff-table .diff-gutter { padding: 0 10px; border-right: 0; }
           .st-diff-table .diff-code { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 
           /* Zed-like: only "edit hunks" are treated as blocks. */
@@ -547,6 +543,18 @@ export const ZedDiffViewer: React.FC<{
             pointer-events: auto;
           }
 
+          .st-diff-table .st-hunk-badge {
+            font-size: 10px;
+            line-height: 1;
+            padding: 3px 6px;
+            border-radius: 6px;
+            border: 1px solid color-mix(in srgb, var(--st-hunk-frame-color) 45%, var(--st-border-variant));
+            background: color-mix(in srgb, var(--st-hunk-bg) 65%, transparent);
+            color: color-mix(in srgb, var(--st-hunk-frame-color) 70%, var(--st-text-muted));
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+          }
+
           .st-diff-hunk-btn {
             font-size: 12px;
             padding: 4px 8px;
@@ -564,6 +572,11 @@ export const ZedDiffViewer: React.FC<{
           .st-diff-hunk-btn:not(:disabled):hover {
             background: color-mix(in srgb, var(--st-accent) 14%, transparent);
           }
+
+          /* Clearer line numbers: avoid default link color. */
+          .st-diff-table .diff-gutter { background: color-mix(in srgb, var(--st-surface) 78%, transparent); }
+          .st-diff-table .diff-gutter > a { color: color-mix(in srgb, var(--st-text-muted) 92%, transparent); }
+          .st-diff-table .diff-gutter:hover > a { color: var(--st-text-muted); }
         `}
       </style>
     </div>

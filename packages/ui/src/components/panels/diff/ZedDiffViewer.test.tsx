@@ -7,7 +7,7 @@ vi.mock('../../../utils/api', () => ({
   API: {
     sessions: {
       stageHunk: vi.fn(),
-      restoreHunk: vi.fn(),
+      changeFileStage: vi.fn(),
     },
   },
 }));
@@ -117,24 +117,24 @@ index 0000000..abcdefg
     });
   });
 
-  it('restores a hunk using the current scope', async () => {
-    (API.sessions.restoreHunk as any).mockResolvedValue({ success: true, data: { success: true } });
-    render(
-      <ZedDiffViewer
-        diff={SAMPLE_DIFF_TWO_HUNKS}
-        sessionId="s1"
-        currentScope="unstaged"
-        unstagedDiff={SAMPLE_DIFF_TWO_HUNKS}
-      />
-    );
+  it('stages an untracked file (file-level stage)', async () => {
+    (API.sessions.changeFileStage as any).mockResolvedValue({ success: true });
+    const diff = `diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..abcdefg
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1,1 @@
++hello`;
 
-    const restore = screen.getAllByTestId('diff-hunk-restore')[0] as HTMLButtonElement;
+    render(<ZedDiffViewer diff={diff} sessionId="s1" currentScope="untracked" />);
+
+    const stage = screen.getAllByTestId('diff-hunk-stage')[0] as HTMLButtonElement;
     await act(async () => {
-      fireEvent.click(restore);
+      fireEvent.click(stage);
     });
-
     await waitFor(() => {
-      expect(API.sessions.restoreHunk).toHaveBeenCalledWith('s1', expect.objectContaining({ scope: 'unstaged' }));
+      expect(API.sessions.changeFileStage).toHaveBeenCalledWith('s1', { filePath: 'new.txt', stage: true });
     });
   });
 
