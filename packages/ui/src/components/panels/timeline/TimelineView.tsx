@@ -5,28 +5,55 @@ import { withTimeout } from '../../../utils/withTimeout';
 import type { TimelineEvent } from '../../../types/timeline';
 import { formatDistanceToNow, parseTimestamp } from '../../../utils/timestampUtils';
 
-// Minimal color scheme - two-tone design
+// Professional color scheme - more impactful contrast
 const colors = {
   bg: 'var(--st-bg)',
   surface: 'var(--st-surface)',
   text: {
-    primary: '#abb2bf',
-    secondary: '#7f848e',
-    muted: '#5c6370',
-    faint: '#4b5263',
+    primary: 'var(--st-text)',
+    secondary: 'color-mix(in srgb, var(--st-text) 70%, transparent)',
+    muted: 'color-mix(in srgb, var(--st-text) 50%, transparent)',
+    faint: 'color-mix(in srgb, var(--st-text) 35%, transparent)',
   },
-  // Simplified: only status colors for functional feedback
   status: {
-    done: '#98c379',
-    running: '#e5c07b',
-    error: '#e06c75',
+    done: '#4ade80',
+    running: '#fbbf24', 
+    error: '#f87171',
   },
-  // User highlight - more visible background
-  userBg: 'rgba(97, 175, 239, 0.12)',
-  userBorder: 'rgba(97, 175, 239, 0.4)',
-  // System/command subtle styling
-  systemBg: 'rgba(0, 0, 0, 0.25)',
-  border: 'color-mix(in srgb, var(--st-border) 50%, transparent)',
+  // User message card
+  userCard: {
+    bg: 'color-mix(in srgb, var(--st-surface) 80%, var(--st-bg))',
+    border: 'color-mix(in srgb, var(--st-border) 50%, transparent)',
+  },
+  // Command section
+  command: {
+    bg: 'color-mix(in srgb, var(--st-bg) 60%, transparent)',
+    hover: 'color-mix(in srgb, var(--st-surface) 40%, transparent)',
+  },
+  border: 'var(--st-border)',
+};
+
+const Spinner: React.FC<{ className?: string }> = ({ className }) => {
+  const outer = new Set([0, 1, 2, 3, 4, 7, 8, 11, 12, 13, 14, 15]);
+  
+  return (
+    <svg viewBox="0 0 15 15" className={className} fill="currentColor" style={{ width: 14, height: 14, flexShrink: 0 }}>
+      {Array.from({ length: 16 }, (_, i) => (
+        <rect
+          key={i}
+          x={(i % 4) * 4}
+          y={Math.floor(i / 4) * 4}
+          width="3"
+          height="3"
+          rx="0.5"
+          style={{
+            animation: `${outer.has(i) ? 'spinner-dim' : 'spinner-bright'} 1.2s ease-in-out infinite`,
+            animationDelay: `${(i % 4) * 0.1 + Math.floor(i / 4) * 0.1}s`,
+          }}
+        />
+      ))}
+    </svg>
+  );
 };
 
 type CommandInfo = {
@@ -42,7 +69,7 @@ type CommandInfo = {
 
 type TimelineItem =
   | { type: 'userMessage'; seq: number; timestamp: string; content: string }
-  | { type: 'agentResponse'; seq: number; timestamp: string; endTimestamp: string; status: 'running' | 'done' | 'error'; messages: Array<{ content: string; timestamp: string }>; commands: CommandInfo[] };
+  | { type: 'agentResponse'; seq: number; timestamp: string; endTimestamp: string; status: 'running' | 'done' | 'error' | 'interrupted'; messages: Array<{ content: string; timestamp: string }>; commands: CommandInfo[] };
 
 const getOperationId = (event: TimelineEvent) => {
   const id = event.meta?.operationId;
@@ -196,35 +223,43 @@ const formatTimeHHMM = (timestamp: string) => {
   }
 };
 
-// User message component - highlighted block (no label needed, visual style is enough)
 const UserMessage: React.FC<{ content: string; timestamp: string }> = ({ content, timestamp }) => (
   <div
     className="rounded-lg px-4 py-3"
     style={{
-      backgroundColor: colors.userBg,
-      borderLeft: `3px solid ${colors.userBorder}`,
+      backgroundColor: colors.userCard.bg,
+      borderLeft: '3px solid var(--st-accent, #61afef)',
     }}
   >
-    <div className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
+    <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
       {content}
     </div>
-    <div className="mt-2 text-[10px]" style={{ color: colors.text.faint }}>
+    <div className="mt-2 text-[11px]" style={{ color: colors.text.faint }}>
       {formatDistanceToNow(parseTimestamp(timestamp))}
     </div>
   </div>
 );
 
-// Agent response component - contains messages + commands in one block
 const AgentResponse: React.FC<{
   messages: Array<{ content: string; timestamp: string }>;
   commands: CommandInfo[];
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'interrupted';
   timestamp: string;
   endTimestamp: string;
 }> = ({ messages, commands, status, timestamp: _timestamp, endTimestamp }) => {
   const [showCommands, setShowCommands] = useState(() => status === 'running');
   const userToggledRef = useRef(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [escPending, setEscPending] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ escPending: boolean }>).detail;
+      setEscPending(detail.escPending);
+    };
+    window.addEventListener('esc-pending-change', handler);
+    return () => window.removeEventListener('esc-pending-change', handler);
+  }, []);
 
   useEffect(() => {
     if (status === 'running') {
@@ -242,51 +277,81 @@ const AgentResponse: React.FC<{
     } catch { /* ignore */ }
   }, []);
 
-  const statusColor = status === 'running' ? colors.status.running : status === 'error' ? colors.status.error : colors.status.done;
+  const statusColor = status === 'running' ? colors.status.running 
+    : status === 'error' ? colors.status.error 
+    : status === 'interrupted' ? colors.status.running 
+    : colors.status.done;
   const totalDuration = commands.reduce((sum, c) => sum + (c.durationMs || 0), 0);
 
   return (
     <div className="space-y-2">
-      {/* Messages - clean, no decoration */}
       {messages.length > 0 && (
         <div className="space-y-2">
           {messages.map((msg, idx) => (
-            <div key={idx} className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
+            <div key={idx} className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
               {msg.content}
             </div>
           ))}
         </div>
       )}
 
-      {/* Commands section - inline collapsible */}
+      {/* Commands section - clean collapsible panel */}
       {commands.length > 0 && (
-        <div className="rounded" style={{ backgroundColor: colors.systemBg }}>
-          {/* Compact header */}
+        <div 
+          className="rounded-lg overflow-hidden"
+          style={{ 
+            backgroundColor: colors.command.bg,
+            border: status === 'running' ? `1px solid ${colors.status.running}33` : '1px solid transparent',
+          }}
+        >
+          {/* Header */}
           <button
             type="button"
             onClick={() => {
               userToggledRef.current = true;
               setShowCommands(v => !v);
             }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:opacity-80 transition-opacity"
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/[0.02] transition-colors"
             style={{ color: colors.text.muted }}
           >
-            {showCommands ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            <span className="font-mono">{commands.length} cmd</span>
-            <span className="mx-1">·</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${status === 'running' ? 'animate-pulse' : ''}`} style={{ backgroundColor: statusColor }} />
-            <span style={{ color: statusColor }}>{status}</span>
-            {totalDuration > 0 && (
+            {showCommands ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            <span className="font-mono">{commands.length} command{commands.length > 1 ? 's' : ''}</span>
+            <span className="opacity-30">·</span>
+            {status === 'running' ? (
+              <Spinner className="text-amber-400" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor }} />
+            )}
+            <span className="font-medium" style={{ color: statusColor }}>{status}</span>
+            {status === 'running' && (
               <>
-                <span className="mx-1">·</span>
-                <span>{Math.round(totalDuration)}ms</span>
+                <span className="opacity-30">·</span>
+                {escPending ? (
+                  <span 
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    style={{ 
+                      backgroundColor: 'color-mix(in srgb, var(--st-accent) 20%, transparent)',
+                      color: 'var(--st-accent)',
+                    }}
+                  >
+                    Esc again to interrupt
+                  </span>
+                ) : (
+                  <span className="opacity-50">Esc to interrupt</span>
+                )}
+              </>
+            )}
+            {totalDuration > 0 && status !== 'running' && (
+              <>
+                <span className="opacity-30">·</span>
+                <span className="tabular-nums opacity-70">{Math.round(totalDuration)}ms</span>
               </>
             )}
           </button>
 
           {/* Collapsible command list */}
           {showCommands && (
-            <div className="px-3 pb-2 space-y-1">
+            <div className="px-3 pb-3 space-y-2">
               {commands.map((c, idx) => {
                 const display = String(c.command ?? '');
                 const key = `${idx}-${display}`;
@@ -298,24 +363,24 @@ const AgentResponse: React.FC<{
                 const showStderr = c.kind === 'cli' && stderr.length > 0;
 
                 return (
-                  <div key={key} className="group">
+                  <div key={key} className="group rounded-sm hover:bg-white/[0.03] transition-colors -mx-1 px-1 py-0.5">
                     <div className="flex items-start justify-between gap-2">
-                      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all flex-1" style={{ color: colors.text.secondary }}>
-                        <span style={{ color: colors.text.faint }}>$</span> {display}
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-all flex-1 leading-relaxed" style={{ color: colors.text.secondary }}>
+                        <span className="opacity-50 select-none">$</span> {display}
                       </pre>
                       <button
                         type="button"
                         onClick={() => handleCopy(commandCopy, key)}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/5"
+                        className="p-0.5 rounded opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
                         title={copiedKey === key ? 'Copied' : 'Copy'}
                       >
-                        {copiedKey === key ? <Check className="w-3 h-3" style={{ color: colors.status.done }} /> : <Copy className="w-3 h-3" style={{ color: colors.text.muted }} />}
+                        {copiedKey === key ? <Check className="w-3 h-3" style={{ color: colors.status.done }} /> : <Copy className="w-3 h-3" style={{ color: colors.text.faint }} />}
                       </button>
                     </div>
                     {(showStdout || showStderr) && (
-                      <div className="mt-1 ml-3 rounded text-[10px] font-mono overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}>
-                        {showStdout && <div className="px-2 py-1"><pre className="whitespace-pre-wrap break-all" style={{ color: colors.text.muted }}>{stdout}</pre></div>}
-                        {showStderr && <div className="px-2 py-1"><pre className="whitespace-pre-wrap break-all" style={{ color: colors.status.error }}>{stderr}</pre></div>}
+                      <div className="mt-1.5 ml-3 rounded text-xs font-mono overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}>
+                        {showStdout && <div className="px-2 py-1.5"><pre className="whitespace-pre-wrap break-all leading-relaxed" style={{ color: colors.text.muted }}>{stdout}</pre></div>}
+                        {showStderr && <div className="px-2 py-1.5"><pre className="whitespace-pre-wrap break-all leading-relaxed" style={{ color: colors.status.error }}>{stderr}</pre></div>}
                       </div>
                     )}
                   </div>
@@ -326,20 +391,19 @@ const AgentResponse: React.FC<{
         </div>
       )}
 
-      {/* Single timestamp at end */}
-      <div className="text-[10px]" style={{ color: colors.text.faint }}>
+      <div className="text-xs" style={{ color: colors.text.faint }}>
         {formatDistanceToNow(parseTimestamp(endTimestamp))}
       </div>
     </div>
   );
 };
 
-// Time separator
+// Time separator - subtle and elegant
 const TimeSeparator: React.FC<{ time: string }> = ({ time }) => (
-  <div className="flex items-center gap-3 py-2">
-    <div className="flex-1 h-px" style={{ backgroundColor: colors.border }} />
-    <span className="text-[10px] font-mono" style={{ color: colors.text.muted }}>{time}</span>
-    <div className="flex-1 h-px" style={{ backgroundColor: colors.border }} />
+  <div className="flex items-center gap-4 py-2">
+    <div className="flex-1 h-px opacity-20" style={{ backgroundColor: colors.border }} />
+    <span className="text-[10px] font-mono opacity-40" style={{ color: colors.text.muted }}>{time}</span>
+    <div className="flex-1 h-px opacity-20" style={{ backgroundColor: colors.border }} />
   </div>
 );
 
@@ -523,7 +587,7 @@ export const TimelineView: React.FC<{
     <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.bg }}>
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
         <div ref={contentRef} className="px-4 py-4">
-          <div className="mx-auto max-w-[800px] flex flex-col gap-4">
+          <div className="mx-auto max-w-[800px] flex flex-col gap-6">
             {error && (
               <div className="rounded px-3 py-2" style={{ backgroundColor: 'rgba(224, 108, 117, 0.1)', border: `1px solid ${colors.status.error}33` }}>
                 <div className="text-[12px] font-medium mb-1" style={{ color: colors.status.error }}>Failed to load timeline</div>
@@ -569,12 +633,15 @@ export const TimelineView: React.FC<{
             })}
 
             {streamingAssistant && (
-              <div className="py-1">
-                <div className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.secondary }}>
+              <div className="space-y-2">
+                <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
                   {streamingAssistant.content}
                 </div>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin" style={{ color: colors.text.faint }} />
+                <div className="flex items-center gap-2 text-xs" style={{ color: colors.text.muted }}>
+                  <Spinner />
+                  <span>Thinking...</span>
+                  <span className="opacity-40">·</span>
+                  <span className="opacity-60">Press Esc to cancel</span>
                 </div>
               </div>
             )}
@@ -583,15 +650,18 @@ export const TimelineView: React.FC<{
               <div
                 className="rounded-lg px-4 py-3"
                 style={{
-                  backgroundColor: colors.userBg,
-                  borderLeft: `3px solid ${colors.userBorder}`,
+                  backgroundColor: colors.userCard.bg,
+                  border: `1px solid ${colors.userCard.border}`,
                 }}
               >
-                <div className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
+                <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
                   {visiblePendingMessage.content}
                 </div>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin" style={{ color: colors.text.faint }} />
+                <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: colors.text.muted }}>
+                  <Spinner />
+                  <span>Sending...</span>
+                  <span className="opacity-40">·</span>
+                  <span className="opacity-60">Press Esc to cancel</span>
                 </div>
               </div>
             )}

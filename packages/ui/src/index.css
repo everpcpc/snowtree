@@ -299,6 +299,17 @@ body {
   background-color: color-mix(in srgb, var(--st-text-faint) 70%, transparent);
 }
 
+/* Spinner animations (OpenCode style) */
+@keyframes spinner-bright {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes spinner-dim {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.5; }
+}
+
 /* Custom animations for the working indicator */
 @keyframes slide-progress {
   0% {

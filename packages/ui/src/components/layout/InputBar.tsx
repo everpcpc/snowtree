@@ -201,6 +201,8 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     claude: {},
     codex: {}
   });
+  const [escPending, setEscPending] = useState(false);
+  const escTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleSubmit = useCallback(() => {
     if (!input.trim()) return;
@@ -216,6 +218,46 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       handleSubmit();
     }
   }, [handleSubmit]);
+
+  const isRunning = session.status === 'running' || session.status === 'initializing';
+
+  useEffect(() => {
+    if (!isRunning) {
+      setEscPending(false);
+      if (escTimeoutRef.current) {
+        clearTimeout(escTimeoutRef.current);
+        escTimeoutRef.current = null;
+      }
+    }
+  }, [isRunning]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('esc-pending-change', { detail: { escPending } }));
+  }, [escPending]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isRunning) {
+        e.preventDefault();
+        if (escPending) {
+          if (escTimeoutRef.current) {
+            clearTimeout(escTimeoutRef.current);
+            escTimeoutRef.current = null;
+          }
+          setEscPending(false);
+          onCancel();
+        } else {
+          setEscPending(true);
+          escTimeoutRef.current = setTimeout(() => {
+            setEscPending(false);
+            escTimeoutRef.current = null;
+          }, 3000);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isRunning, escPending, onCancel]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -329,7 +371,6 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     return () => unsubscribe();
   }, [session.id, applyTimelineEventToSettings]);
 
-  const isRunning = session.status === 'running' || session.status === 'initializing';
   const selectedAvailable = aiToolsLoading ? true : (aiToolsStatus?.[selectedTool]?.available ?? true);
   const canSubmit = input.trim() && !isProcessing && selectedAvailable;
   const toolSettingsLoading = toolSettingsProbeLoading || toolSettingsTimelineLoading;
@@ -343,13 +384,13 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
   return (
     <div className="flex-shrink-0 border-t st-hairline st-surface px-3 py-2">
       <div
-        className="rounded-lg border transition-all"
+        className="rounded-lg transition-all duration-150"
         style={{
-          borderColor: isFocused
-            ? 'color-mix(in srgb, var(--st-accent) 40%, var(--st-border))'
-            : 'color-mix(in srgb, var(--st-border) 60%, transparent)',
-          backgroundColor: 'color-mix(in srgb, var(--st-editor) 65%, transparent)',
-          boxShadow: isFocused ? '0 0 0 1px color-mix(in srgb, var(--st-accent) 15%, transparent)' : 'none',
+          border: `1px solid ${isFocused ? 'var(--st-accent)' : 'var(--st-border)'}`,
+          backgroundColor: 'var(--st-editor)',
+          boxShadow: isFocused
+            ? '0 0 0 3px color-mix(in srgb, var(--st-accent) 20%, transparent)'
+            : 'none',
         }}
       >
         {/* Text input */}
@@ -362,13 +403,23 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
           onBlur={() => setIsFocused(false)}
           placeholder={placeholder}
           disabled={isProcessing}
-          className="w-full px-3 pt-2.5 pb-1.5 bg-transparent text-[13px] resize-none focus:outline-none min-h-[42px] max-h-[160px] placeholder:text-[color:var(--st-text-faint)]"
-          style={{ color: 'var(--st-text)', caretColor: 'var(--st-accent)', lineHeight: '1.5' }}
+          className="w-full px-3 pt-3 pb-2 bg-transparent text-[13px] focus:outline-none min-h-[46px] max-h-[160px] placeholder:text-[color:var(--st-text-faint)] placeholder:opacity-70"
+          style={{
+            color: 'var(--st-text)',
+            caretColor: 'var(--st-accent)',
+            lineHeight: '1.5',
+            resize: 'none',
+          }}
           rows={1}
         />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-2 py-1 border-t st-hairline">
+        <div
+          className="flex items-center justify-between px-2 py-1.5"
+          style={{
+            borderTop: '1px solid color-mix(in srgb, var(--st-border) 50%, transparent)',
+          }}
+        >
           <CLISelector
             selected={selectedTool}
             onChange={onToolChange}
@@ -381,23 +432,6 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
           />
 
           <div className="flex items-center gap-1.5">
-            {isRunning && (
-              <button
-                onClick={onCancel}
-                className="p-1.5 rounded transition-all st-focus-ring st-hoverable"
-                title="Stop (Esc)"
-              >
-                {/* Breathing dot indicator */}
-                <span
-                  className="block w-3 h-3 rounded-sm"
-                  style={{
-                    backgroundColor: 'var(--st-danger)',
-                    animation: 'breathing 1.5s ease-in-out infinite',
-                  }}
-                />
-              </button>
-            )}
-
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}
