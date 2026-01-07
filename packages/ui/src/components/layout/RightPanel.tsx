@@ -554,8 +554,9 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
   }, [session.id]);
 
   // Fetch files for the selected commit
-  const fetchFiles = useCallback(async () => {
+  const fetchFiles = useCallback(async (options?: { silent?: boolean }) => {
     if (!session.id || !selectedTarget) return;
+    const silent = Boolean(options?.silent);
 
     // If a refresh is requested while a previous fetch is in-flight (e.g. external IDE stages/unstages),
     // queue one more fetch to run after the current request settles.
@@ -566,8 +567,10 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
 
     const requestId = ++requestIdRef.current;
     loadingRef.current = true;
-    setIsLoading(true);
-    setError(null);
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       if (selectedTarget.kind === 'working') {
@@ -654,17 +657,17 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       }
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to load changes');
+      if (!silent) setError(err instanceof Error ? err.message : 'Failed to load changes');
     } finally {
       if (requestId === requestIdRef.current) {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
         loadingRef.current = false;
       }
 
       if (!loadingRef.current && pendingFilesRefreshRef.current) {
         pendingFilesRefreshRef.current = false;
         window.setTimeout(() => {
-          void fetchFiles();
+          void fetchFiles(options);
         }, 0);
       }
     }
@@ -723,7 +726,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       refreshTimerRef.current = null;
       fetchCommits(false);
       if (selectedIsUncommitted) {
-        fetchFiles();
+        fetchFiles({ silent: true });
       }
     }, 200);
   }, [session.id, fetchCommits, fetchFiles, selectedIsUncommitted]);
@@ -736,7 +739,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
     changesRefreshTimerRef.current = window.setTimeout(() => {
       changesRefreshTimerRef.current = null;
       if (selectedIsUncommittedRef.current) {
-        fetchFiles();
+        fetchFiles({ silent: true });
       }
     }, 80);
   }, [session.id, fetchFiles]);
@@ -792,7 +795,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(({
       if (e.status !== 'finished' && e.status !== 'failed') return;
       const meta = (e.meta || {}) as Record<string, unknown>;
       const source = typeof meta.source === 'string' ? meta.source : '';
-      if (source !== 'agent' && source !== 'gitStaging') return;
+      if (source !== 'agent') return;
       const cmd = typeof e.command === 'string' ? e.command.trim() : '';
       if (!cmd) return;
       if (!/^(git|gh)\b/.test(cmd)) return;
