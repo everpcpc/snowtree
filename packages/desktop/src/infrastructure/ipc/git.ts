@@ -12,7 +12,8 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       if (!session?.worktreePath) return { success: false, error: 'Session worktree not found' };
 
       const baseBranch = session.baseBranch || 'main';
-      const commits = await gitDiffManager.getCommitHistory(session.worktreePath, 50, baseBranch, sessionId);
+      const baseCommit = session.baseCommit;
+      const commits = await gitDiffManager.getCommitHistory(session.worktreePath, 50, baseCommit || baseBranch, sessionId);
 
       const executions = commits.map((commit, index) => ({
         id: index + 1,
