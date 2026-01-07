@@ -223,7 +223,27 @@ const formatTimeHHMM = (timestamp: string) => {
   }
 };
 
-const UserMessage: React.FC<{ content: string; timestamp: string }> = ({ content, timestamp }) => (
+interface ImageAttachment {
+  id: string;
+  filename: string;
+  mime: string;
+  dataUrl: string;
+}
+
+const ImageTag: React.FC<{ index: number }> = ({ index }) => (
+  <span
+    className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono mx-0.5"
+    style={{
+      backgroundColor: 'color-mix(in srgb, var(--st-accent) 15%, transparent)',
+      border: '1px solid var(--st-accent)',
+      color: 'var(--st-accent)',
+    }}
+  >
+    [Image {index}]
+  </span>
+);
+
+const UserMessage: React.FC<{ content: string; timestamp: string; images?: ImageAttachment[] }> = ({ content, timestamp, images }) => (
   <div
     className="rounded-lg px-4 py-3"
     style={{
@@ -232,6 +252,14 @@ const UserMessage: React.FC<{ content: string; timestamp: string }> = ({ content
     }}
   >
     <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
+      {images && images.length > 0 && (
+        <>
+          {images.map((img, idx) => (
+            <ImageTag key={img.id} index={idx + 1} />
+          ))}
+          {content && ' '}
+        </>
+      )}
       {content}
     </div>
     <div className="mt-2 text-[11px]" style={{ color: colors.text.faint }}>
@@ -250,16 +278,6 @@ const AgentResponse: React.FC<{
   const [showCommands, setShowCommands] = useState(() => status === 'running');
   const userToggledRef = useRef(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [escPending, setEscPending] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ escPending: boolean }>).detail;
-      setEscPending(detail.escPending);
-    };
-    window.addEventListener('esc-pending-change', handler);
-    return () => window.removeEventListener('esc-pending-change', handler);
-  }, []);
 
   useEffect(() => {
     if (status === 'running') {
@@ -323,24 +341,6 @@ const AgentResponse: React.FC<{
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor }} />
             )}
             <span className="font-medium" style={{ color: statusColor }}>{status}</span>
-            {status === 'running' && (
-              <>
-                <span className="opacity-30">·</span>
-                {escPending ? (
-                  <span 
-                    className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                    style={{ 
-                      backgroundColor: 'color-mix(in srgb, var(--st-accent) 20%, transparent)',
-                      color: 'var(--st-accent)',
-                    }}
-                  >
-                    Esc again to interrupt
-                  </span>
-                ) : (
-                  <span className="opacity-50">Esc to interrupt</span>
-                )}
-              </>
-            )}
             {totalDuration > 0 && status !== 'running' && (
               <>
                 <span className="opacity-30">·</span>
@@ -409,7 +409,7 @@ const TimeSeparator: React.FC<{ time: string }> = ({ time }) => (
 
 export const TimelineView: React.FC<{
   sessionId: string;
-  pendingMessage?: { content: string; timestamp: string } | null;
+  pendingMessage?: { content: string; timestamp: string; images?: ImageAttachment[] } | null;
 }> = ({ sessionId, pendingMessage }) => {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -655,6 +655,14 @@ export const TimelineView: React.FC<{
                 }}
               >
                 <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.text.primary }}>
+                  {visiblePendingMessage.images && visiblePendingMessage.images.length > 0 && (
+                    <>
+                      {visiblePendingMessage.images.map((img, idx) => (
+                        <ImageTag key={img.id} index={idx + 1} />
+                      ))}
+                      {visiblePendingMessage.content && ' '}
+                    </>
+                  )}
                   {visiblePendingMessage.content}
                 </div>
                 <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: colors.text.muted }}>
