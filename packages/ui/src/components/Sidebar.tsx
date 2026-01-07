@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FolderPlus, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, FolderPlus, Plus, Trash2, Loader2 } from 'lucide-react';
 import { API } from '../utils/api';
 import { useErrorStore } from '../stores/errorStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -242,6 +242,16 @@ export function Sidebar() {
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId) || null, [sessions, activeSessionId]);
   const activeWorktreePath = activeSession?.worktreePath || null;
 
+  const runningWorktreePaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const s of sessions) {
+      if ((s.status === 'running' || s.status === 'initializing') && s.worktreePath) {
+        paths.add(s.worktreePath);
+      }
+    }
+    return paths;
+  }, [sessions]);
+
   useEffect(() => {
     if (!pendingSelectedWorktreePath) return;
     if (!activeWorktreePath) return;
@@ -474,6 +484,7 @@ export function Sidebar() {
                               );
                               const leafName = worktree.path.split('/').filter(Boolean).pop() || worktree.path;
                               const isEditing = editingWorktreePath === worktree.path;
+                              const isRunning = runningWorktreePaths.has(worktree.path);
                               return (
                                 <div
                                   key={worktree.path}
@@ -534,6 +545,12 @@ export function Sidebar() {
                                             >
                                               {leafName}
                                             </span>
+                                            {isRunning && (
+                                              <Loader2 
+                                                className="w-3 h-3 animate-spin flex-shrink-0" 
+                                                style={{ color: 'var(--st-warning)' }}
+                                              />
+                                            )}
                                             <span className="text-[11px] st-text-faint flex-shrink-0">
                                               {worktree.createdAt || worktree.lastCommitAt ? formatDistanceToNow(worktree.createdAt || worktree.lastCommitAt!) : ''}
                                             </span>

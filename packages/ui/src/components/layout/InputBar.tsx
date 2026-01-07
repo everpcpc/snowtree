@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ChevronDown, Sparkles, Code2, Loader2 } from 'lucide-react';
 import type { InputBarProps, CLITool, ImageAttachment } from './types';
 import { API } from '../../utils/api';
@@ -6,6 +6,95 @@ import { withTimeout } from '../../utils/withTimeout';
 import type { TimelineEvent } from '../../types/timeline';
 
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+const BlockCursor: React.FC<{ 
+  editorRef: React.RefObject<HTMLDivElement | null>;
+  visible: boolean;
+  color: string;
+}> = ({ editorRef, visible, color }) => {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!visible || !editorRef.current) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        setPosition(null);
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      if (!range.collapsed) {
+        setPosition(null);
+        return;
+      }
+
+      const editor = editorRef.current;
+      if (!editor || !editor.contains(range.startContainer)) {
+        setPosition(null);
+        return;
+      }
+
+      const rects = range.getClientRects();
+      const editorRect = editor.getBoundingClientRect();
+      
+      if (rects.length > 0) {
+        const rect = rects[0];
+        setPosition({
+          top: rect.top - editorRect.top,
+          left: rect.left - editorRect.left,
+        });
+      } else {
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) {
+          setPosition({ top: 0, left: 0 });
+        } else {
+          setPosition({
+            top: rect.top - editorRect.top,
+            left: rect.left - editorRect.left,
+          });
+        }
+      }
+    };
+
+    updatePosition();
+
+    const editor = editorRef.current;
+    const observer = new MutationObserver(updatePosition);
+    observer.observe(editor, { 
+      childList: true, 
+      subtree: true, 
+      characterData: true 
+    });
+
+    document.addEventListener('selectionchange', updatePosition);
+    
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('selectionchange', updatePosition);
+    };
+  }, [visible, editorRef]);
+
+  if (!visible || !position) return null;
+
+  return (
+    <div
+      className="absolute pointer-events-none"
+      style={{
+        top: position.top,
+        left: position.left,
+        width: '8px',
+        height: '19px',
+        backgroundColor: color,
+        opacity: 0.7,
+      }}
+    />
+  );
+};
 
 const KnightRiderSpinner: React.FC<{ color?: string }> = ({ color = 'var(--st-accent)' }) => {
   const [frame, setFrame] = useState(0);
@@ -536,52 +625,65 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
         />
 
         <div className="flex-1 min-w-0 flex flex-col">
-          <div
-            className="ml-2 px-3 py-2"
-            style={{ backgroundColor: 'var(--st-editor)' }}
-          >
-            <div className="relative">
-              <div
-                ref={editorRef}
-                contentEditable
-                onKeyDown={handleKeyDown}
-                onInput={checkEmpty}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                className="w-full bg-transparent text-[13px] focus:outline-none min-h-[20px] max-h-[144px] overflow-y-auto"
-                style={{
-                  color: isRunning ? 'var(--st-text-faint)' : 'var(--st-text)',
-                  caretColor: isRunning ? 'transparent' : agentColor,
-                  lineHeight: '1.5',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              />
-              {isEmpty && !isRunning && (
+          <div className="ml-2">
+            <div
+              className="px-3 py-2"
+              style={{ backgroundColor: 'var(--st-editor)' }}
+            >
+              <div className="relative">
                 <div
-                  className="absolute top-0 left-0 text-[13px] pointer-events-none"
-                  style={{ color: 'var(--st-text-faint)', opacity: 0.6 }}
-                >
-                  {placeholder}
-                </div>
-              )}
-            </div>
+                  ref={editorRef}
+                  contentEditable
+                  onKeyDown={handleKeyDown}
+                  onInput={checkEmpty}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
+                  className="w-full bg-transparent text-[13px] focus:outline-none min-h-[20px] max-h-[144px] overflow-y-auto"
+                  style={{
+                    color: isRunning ? 'var(--st-text-faint)' : 'var(--st-text)',
+                    caretColor: 'transparent',
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                />
+                <BlockCursor 
+                  editorRef={editorRef} 
+                  visible={isFocused && !isRunning} 
+                  color="var(--st-text)"
+                />
+                {isEmpty && !isRunning && (
+                  <div
+                    className="absolute top-0 left-0 text-[13px] pointer-events-none"
+                    style={{ color: 'var(--st-text-faint)', opacity: 0.6 }}
+                  >
+                    {placeholder}
+                  </div>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2 mt-2 text-[12px]">
-              <span style={{ color: agentColor }}>{agentName}</span>
-              {modelInfo && (
-                <span style={{ color: 'var(--st-text)' }}>{modelInfo}</span>
-              )}
-              {levelInfo && (
-                <span style={{ color: 'var(--st-text-faint)' }}>{levelInfo}</span>
-              )}
-              {versionInfo && (
-                <span style={{ color: 'var(--st-text-faint)' }}>{versionInfo}</span>
-              )}
+              <div className="flex items-center gap-2 mt-2 text-[12px]">
+                <span style={{ color: agentColor }}>{agentName}</span>
+                {modelInfo && (
+                  <span style={{ color: 'var(--st-text)' }}>{modelInfo}</span>
+                )}
+                {levelInfo && (
+                  <span style={{ color: 'var(--st-text-faint)' }}>{levelInfo}</span>
+                )}
+                {versionInfo && (
+                  <span style={{ color: 'var(--st-text-faint)' }}>{versionInfo}</span>
+                )}
+              </div>
             </div>
+            <div 
+              className="h-[3px]"
+              style={{ 
+                background: `linear-gradient(to bottom, var(--st-editor) 0%, transparent 100%)` 
+              }}
+            />
           </div>
 
-          <div className="flex items-center justify-between ml-2 mt-2 text-[11px]">
+          <div className="flex items-center justify-between ml-2 mt-1 text-[11px]">
             <div className="flex items-center gap-2">
               {isRunning && (
                 <>
