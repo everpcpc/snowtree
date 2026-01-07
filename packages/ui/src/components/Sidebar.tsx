@@ -560,9 +560,7 @@ export function Sidebar() {
                                       <div className="flex items-center gap-1 text-[11px] font-mono flex-shrink-0">
                                         {(worktree.additions > 0 || worktree.deletions > 0) && (
                                           <span style={{ color: 'var(--st-accent)' }}>
-                                            {worktree.additions > 0 && `+${worktree.additions}`}
-                                            {worktree.additions > 0 && worktree.deletions > 0 && ' '}
-                                            {worktree.deletions > 0 && `-${worktree.deletions}`}
+                                            +{worktree.additions || 0} -{worktree.deletions || 0}
                                           </span>
                                         )}
                                         {worktree.hasChanges && worktree.additions === 0 && worktree.deletions === 0 && (
