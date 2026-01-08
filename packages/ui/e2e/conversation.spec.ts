@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { openFirstWorktree, waitForFirstProjectCard } from './app-helpers';
+import { clearEditor, getEditorText, getMessageEditor, setEditorText } from './editor-helpers';
 
 test.describe('Conversation and Input', () => {
   test.beforeEach(async ({ page }) => {
@@ -16,7 +17,7 @@ test.describe('Conversation and Input', () => {
   });
 
   test('should display input bar', async ({ page }) => {
-    const inputBar = page.locator('textarea, [contenteditable="true"], input[type="text"]').first();
+    const inputBar = getMessageEditor(page);
     const inputExists = await inputBar.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (inputExists) {
@@ -25,16 +26,14 @@ test.describe('Conversation and Input', () => {
   });
 
   test('should allow typing in input field', async ({ page }) => {
-    const inputBar = page.locator('textarea, [contenteditable="true"]').first();
+    const inputBar = getMessageEditor(page);
     const inputExists = await inputBar.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (inputExists) {
-      await inputBar.click();
-      await inputBar.fill('test message');
-      await page.waitForTimeout(300);
-
-      const value = await inputBar.inputValue().catch(() => '');
-      expect(value).toBe('test message');
+      await setEditorText(page, inputBar, 'test message');
+      await page.waitForTimeout(200);
+      expect((await getEditorText(inputBar)).trim()).toBe('test message');
+      await clearEditor(page, inputBar);
     }
   });
 

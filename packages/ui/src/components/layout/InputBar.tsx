@@ -633,6 +633,10 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
                 <div
                   ref={editorRef}
                   contentEditable
+                  role="textbox"
+                  aria-label={placeholder}
+                  aria-multiline="true"
+                  data-testid="input-editor"
                   onKeyDown={handleKeyDown}
                   onInput={checkEmpty}
                   onFocus={() => setIsFocused(true)}
@@ -662,7 +666,7 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
               </div>
 
               <div className="flex items-center gap-2 mt-2 text-[12px]">
-                <span style={{ color: 'var(--st-accent)' }}>{agentName}</span>
+                <span data-testid="input-agent" style={{ color: 'var(--st-accent)' }}>{agentName}</span>
                 {modelInfo && (
                   <span style={{ color: 'var(--st-text)' }}>{modelInfo}</span>
                 )}
