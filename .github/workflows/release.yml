@@ -63,12 +63,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm -w exec -- electron-builder install-app-deps --projectDir "${RELEASE_APP_DIR}"
+          pushd "${RELEASE_APP_DIR}"
+          "${GITHUB_WORKSPACE}/node_modules/.bin/electron-builder" install-app-deps
+          popd
 
       - name: Publish to GitHub Releases
         shell: bash
         run: |
           set -euo pipefail
-          pnpm -w exec -- electron-builder --projectDir "${RELEASE_APP_DIR}" --publish always
+          "${GITHUB_WORKSPACE}/node_modules/.bin/electron-builder" --projectDir "${RELEASE_APP_DIR}" --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
