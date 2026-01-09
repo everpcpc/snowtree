@@ -1,6 +1,6 @@
 # Snowtree
 
-**AI writes code. You can't review it all. You can't rollback safely.**
+**AI generates code. You must review. You can't review all or rollback safely.**
 
 Snowtree fixes this: **Worktree isolation + Incremental review + Stage as snapshot**.
 
