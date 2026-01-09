@@ -60,14 +60,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EB="$(node -p \"require.resolve('electron-builder/out/cli/cli.js')\")"
+          EB="$(node -p "require.resolve('electron-builder/out/cli/cli.js')")"
           node "$EB" install-app-deps --projectDir release-app
 
       - name: Publish to GitHub Releases
         shell: bash
         run: |
           set -euo pipefail
-          EB="$(node -p \"require.resolve('electron-builder/out/cli/cli.js')\")"
+          EB="$(node -p "require.resolve('electron-builder/out/cli/cli.js')")"
           node "$EB" --projectDir release-app --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
