@@ -1,4 +1,5 @@
 import { ConfigManager } from './configManager';
+import { randomBytes } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -20,9 +21,33 @@ const CITY_NAMES = [
 
 export class WorktreeNameGenerator {
   private configManager: ConfigManager;
+  private static readonly SUFFIX_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'; // Crockford-ish base32 (lowercase), avoids i/l/o/u.
 
   constructor(configManager: ConfigManager) {
     this.configManager = configManager;
+  }
+
+  private toSlug(input: string): string {
+    const base = String(input || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-+/, '')
+      .replace(/-+$/, '');
+    return base || 'workspace';
+  }
+
+  private randomSuffix(length = 7): string {
+    const alphabet = WorktreeNameGenerator.SUFFIX_ALPHABET;
+    const out: string[] = [];
+    // `alphabet.length` is 32, so `byte & 31` is unbiased.
+    const bytes = randomBytes(length);
+    for (let i = 0; i < length; i++) {
+      out.push(alphabet[bytes[i] & 31]);
+    }
+    return out.join('');
   }
 
   generateSessionName(): string {
@@ -35,7 +60,14 @@ export class WorktreeNameGenerator {
   }
 
   generateWorktreeName(): string {
-    return this.generateSessionName().toLowerCase();
+    return this.generateWorktreeNameFromSessionName(this.generateSessionName());
+  }
+
+  generateWorktreeNameFromSessionName(sessionName: string): string {
+    const base = this.toSlug(sessionName);
+    // Add a short random suffix to reduce collisions when creating many worktrees quickly.
+    // Prefix with `w` to avoid looking like a commit hash.
+    return `${base}-w${this.randomSuffix(7)}`;
   }
 
   async generateUniqueWorktreeName(): Promise<string> {

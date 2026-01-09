@@ -9,6 +9,7 @@ type ExecutorLike = {
 
 export function setupEventListeners(services: AppServices, getMainWindow: () => BrowserWindow | null): void {
   const { sessionManager, gitStatusManager, claudeExecutor, codexExecutor } = services;
+  const lastSessionStatusById = new Map<string, string>();
 
   const send = (channel: string, ...args: unknown[]) => {
     const win = getMainWindow();
@@ -17,18 +18,49 @@ export function setupEventListeners(services: AppServices, getMainWindow: () => 
   };
 
   sessionManager.on('sessions-loaded', (sessions) => {
+    if (Array.isArray(sessions)) {
+      for (const s of sessions as Array<{ id?: unknown; status?: unknown }>) {
+        const id = typeof s?.id === 'string' ? s.id : null;
+        const status = typeof s?.status === 'string' ? s.status : null;
+        if (id && status) lastSessionStatusById.set(id, status);
+      }
+    }
     send('sessions:loaded', sessions);
   });
 
   sessionManager.on('session-created', (session) => {
+    const id = typeof (session as { id?: unknown })?.id === 'string' ? (session as { id: string }).id : null;
+    const status = typeof (session as { status?: unknown })?.status === 'string' ? (session as { status: string }).status : null;
+    if (id && status) lastSessionStatusById.set(id, status);
     send('session:created', session);
   });
 
   sessionManager.on('session-updated', (session) => {
+    const id = typeof (session as { id?: unknown })?.id === 'string' ? (session as { id: string }).id : null;
+    const status = typeof (session as { status?: unknown })?.status === 'string' ? (session as { status: string }).status : null;
+    if (id && status) {
+      const prev = lastSessionStatusById.get(id);
+      lastSessionStatusById.set(id, status);
+
+      // When a turn completes (running -> waiting), refresh git status so the right panel updates.
+      if ((prev === 'running' || prev === 'initializing') && status === 'waiting') {
+        gitStatusManager.refreshSessionGitStatus(id, false).catch(() => {
+          // best-effort
+        });
+      }
+    }
     send('session:updated', session);
   });
 
   sessionManager.on('session-deleted', (data) => {
+    const sessionId = typeof data === 'string'
+      ? data
+      : (typeof (data as { id?: unknown })?.id === 'string'
+          ? String((data as { id: string }).id)
+          : (typeof (data as { sessionId?: unknown })?.sessionId === 'string'
+              ? String((data as { sessionId: string }).sessionId)
+              : null));
+    if (sessionId) lastSessionStatusById.delete(sessionId);
     send('session:deleted', data);
   });
 

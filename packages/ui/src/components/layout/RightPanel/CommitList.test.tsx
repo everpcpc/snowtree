@@ -79,6 +79,10 @@ describe('CommitList', () => {
       />
     );
     expect(screen.getByTitle('base')).toBeInTheDocument();
+    const baseButton = screen.getByLabelText('Select commit base123');
+    expect(baseButton.getAttribute('title')).toContain('base');
+    expect(baseButton.getAttribute('title')).toContain('Author:');
+    expect(baseButton.getAttribute('title')).toContain('Date:');
   });
 
   it('does not render a HEAD badge on session commits', () => {

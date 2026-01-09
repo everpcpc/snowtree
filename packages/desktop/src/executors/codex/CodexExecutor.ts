@@ -304,15 +304,10 @@ export class CodexExecutor extends AbstractExecutor {
     const { method, params } = notification;
 
     // Keep the per-prompt RPC entry Running until the turn completes.
-    if (method === 'turn/completed' || method === 'codex/event/task_complete') {
+    if (method === 'turn/completed') {
       this.finishNextPendingUserTurn(panelId, 'finished');
       if (!this.pendingUserTurnRpcIdsByPanel.get(panelId)?.length) {
         this.sessionManager.updateSessionStatus(sessionId, 'waiting');
-      }
-    } else if (method === 'codex/event/turn_aborted') {
-      this.finishNextPendingUserTurn(panelId, 'failed');
-      if (!this.pendingUserTurnRpcIdsByPanel.get(panelId)?.length) {
-        this.sessionManager.updateSessionStatus(sessionId, 'error', 'Turn aborted');
       }
     } else if (method === 'error') {
       const willRetry = typeof (params as { willRetry?: unknown; will_retry?: unknown })?.willRetry === 'boolean'
@@ -330,18 +325,9 @@ export class CodexExecutor extends AbstractExecutor {
       }
     }
 
-    // Prefer v2 notifications. Ignore legacy `codex/event/*` to avoid duplicates.
+    // v2 notifications (Codex app-server).
     const entry = this.messageParser.parseV2Notification(method, params, panelId);
     if (entry) this.handleNormalizedEntry(panelId, sessionId, entry);
-
-    // Emit raw notification
-    this.emit('output', {
-      panelId,
-      sessionId,
-      type: 'json',
-      data: { type: 'notification', method, params },
-      timestamp: new Date(),
-    } as ExecutorOutputEvent);
   }
 
   private handleRpcRequest(

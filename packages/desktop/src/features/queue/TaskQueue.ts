@@ -192,7 +192,7 @@ export class TaskQueue {
             // No worktree template provided - verbose debug logging removed
             // Use the AI-powered name generator to generate a session name with spaces
             sessionName = this.options.worktreeNameGenerator.generateSessionName();
-            worktreeName = sessionName.toLowerCase();
+            worktreeName = this.options.worktreeNameGenerator.generateWorktreeNameFromSessionName(sessionName);
             // Generated names - verbose debug logging removed
           }
         } else {
@@ -277,7 +277,7 @@ export class TaskQueue {
 
               // Generate a new name
               const newSessionName = this.options.worktreeNameGenerator.generateSessionName();
-              const newWorktreeName = newSessionName.toLowerCase();
+              const newWorktreeName = this.options.worktreeNameGenerator.generateWorktreeNameFromSessionName(newSessionName);
 
               // Ensure uniqueness for both names
               const { sessionName: uniqueSessionName, worktreeName: uniqueWorktreeName } =

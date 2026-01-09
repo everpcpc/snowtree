@@ -1,6 +1,7 @@
 import type { FileChange } from '../types';
 import type { TrackedFileEntry, TriState } from './types';
 import { FILE_TYPE_INFO, type FileType } from './constants';
+import type { CommitData } from './types';
 
 export const compareGitPaths = (a: string, b: string): number =>
   a === b ? 0 : a < b ? -1 : 1;
@@ -82,4 +83,35 @@ export function formatCommitTime(timestamp: string): string {
     month: '2-digit',
     day: '2-digit',
   }).format(date);
+}
+
+export function formatCommitHoverTitle(commit: CommitData): string {
+  const isUncommitted = commit.id === 0;
+
+  const message = (commit.commit_message || '').trim() || (isUncommitted ? 'Uncommitted changes' : 'Commit');
+  const author = (commit.author || '').trim() || (isUncommitted ? 'You' : 'Unknown');
+  const hash = (commit.after_commit_hash || '').trim();
+
+  const date = (() => {
+    const d = new Date(commit.timestamp);
+    if (Number.isNaN(d.getTime())) return String(commit.timestamp || '');
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(d);
+  })();
+
+  const lines: string[] = [message, '', `Author: ${author}`, `Date: ${date}`];
+
+  if (!isUncommitted && hash && hash !== 'UNCOMMITTED') lines.push(`Hash: ${hash}`);
+
+  lines.push(
+    `Changes: +${commit.stats_additions}  -${commit.stats_deletions}  (${commit.stats_files_changed} files)`
+  );
+
+  return lines.join('\n');
 }

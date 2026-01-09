@@ -5,40 +5,43 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
   NormalizedEntry,
-  ActionType,
 } from '../types';
-
-interface CodexEventParams {
-  conversation_id?: string;
-  message?: CodexMessage;
-  content?: string;
-  tool_name?: string;
-  tool_input?: Record<string, unknown>;
-  result?: unknown;
-  is_error?: boolean;
-  reasoning?: string;
-  [key: string]: unknown;
-}
-
-interface CodexMessage {
-  role?: string;
-  content?: string | CodexContentItem[];
-}
-
-interface CodexContentItem {
-  type: string;
-  text?: string;
-  [key: string]: unknown;
-}
 
 /**
  * Parses Codex event notifications into normalized entries for UI display
  */
 export class CodexMessageParser {
-  private assistantDeltaByPanel = new Map<string, { id: string; text: string }>();
-  private reasoningDeltaByPanel = new Map<string, { id: string; text: string }>();
+  private reasoningByPanel = new Map<string, { id: string; text: string }>();
   private assistantDeltaByItem = new Map<string, { id: string; text: string }>();
   private reasoningDeltaByItem = new Map<string, { id: string; text: string }>();
+
+  private beginNewTurn(panelId?: string): void {
+    if (!panelId) return;
+    this.reasoningByPanel.delete(panelId);
+  }
+
+  private normalizeReasoningText(raw: unknown): string {
+    const text = typeof raw === 'string' ? raw.trim() : '';
+    if (!text) return '';
+    if (text.includes('\n')) return text;
+
+    // Codex sometimes emits short "phase" markers using markdown-ish prefixes like:
+    // "*#Draft", "**Selecting", "# Preparing". We display thinking as plain text, so
+    // strip those prefixes for cleaner UI while preserving real bullet lines.
+    if (/^\s*[*-]\s+/.test(text)) return text;
+
+    let stripped = text
+      .replace(/^\s*(?:\*+#+|#+\*+|\*{2,}|#{1,6})\s*/, '')
+      .trimStart();
+
+    // Also trim trailing emphasis markers for these short phase strings.
+    stripped = stripped
+      .replace(/\s*\*{1,3}\s*$/, '')
+      .replace(/\s*#{1,6}\s*$/, '')
+      .trimEnd();
+
+    return stripped || text;
+  }
 
   /**
    * Parse a Codex app-server v2 JSON-RPC notification (preferred).
@@ -57,6 +60,7 @@ export class CodexMessageParser {
         };
 
       case 'turn/started':
+        this.beginNewTurn(panelId);
         return {
           id: uuidv4(),
           timestamp,
@@ -66,13 +70,21 @@ export class CodexMessageParser {
         };
 
       case 'turn/completed':
-        return {
-          id: uuidv4(),
-          timestamp,
-          entryType: 'system_message',
-          content: 'Turn completed',
-          metadata: params as Record<string, unknown>,
-        };
+        // Ensure any coalesced single-line thinking gets marked non-streaming at end of turn,
+        // even if the server doesn't emit a matching `item/completed` for the reasoning item.
+        if (panelId) {
+          const current = this.reasoningByPanel.get(panelId);
+          if (current && current.text) {
+            return {
+              id: current.id,
+              timestamp,
+              entryType: 'thinking',
+              content: current.text,
+              metadata: { ...(params as Record<string, unknown>), streaming: false },
+            };
+          }
+        }
+        return null;
 
       case 'turn/plan/updated':
         return this.parseTurnPlanUpdated(params, timestamp);
@@ -82,13 +94,13 @@ export class CodexMessageParser {
 
       case 'item/reasoning/textDelta':
       case 'item/reasoning/summaryTextDelta':
-        return this.parseV2ReasoningDelta(params, timestamp);
+        return this.parseV2ReasoningDelta(params, timestamp, panelId);
 
       case 'item/started':
-        return this.parseV2ItemStarted(params, timestamp);
+        return this.parseV2ItemStarted(params, timestamp, panelId);
 
       case 'item/completed':
-        return this.parseV2ItemCompleted(params, timestamp);
+        return this.parseV2ItemCompleted(params, timestamp, panelId);
 
       // We intentionally do not surface output deltas in the timeline (audit focuses on commands/actions).
       case 'item/commandExecution/outputDelta':
@@ -108,168 +120,8 @@ export class CodexMessageParser {
   }
 
   /**
-   * Parse a Codex notification into a normalized entry
+   * Parse Codex app-server v2 streaming agent message deltas.
    */
-  parseNotification(eventType: string, params: unknown, panelId?: string): NormalizedEntry | null {
-    const timestamp = new Date().toISOString();
-    const p = params as CodexEventParams;
-
-    switch (eventType) {
-      case 'session_configured':
-        return this.parseSessionConfigured(p, timestamp);
-
-      case 'user_message':
-        return this.parseUserMessage(p, timestamp);
-
-      // New Codex protocol uses `agent_message` / `agent_message_delta`
-      case 'agent_message':
-      case 'assistant_message':
-        return this.parseAssistantMessage(p, timestamp);
-
-      case 'agent_message_delta':
-        return this.parseAssistantDelta(p, timestamp, panelId);
-
-      case 'agent_reasoning':
-      case 'reasoning':
-        return this.parseReasoning(p, timestamp);
-
-      case 'agent_reasoning_delta':
-        return this.parseReasoningDelta(p, timestamp, panelId);
-
-      // Command execution lifecycle
-      case 'exec_command_begin':
-        return this.parseExecCommandBegin(p, timestamp);
-      case 'exec_command_end':
-        return this.parseExecCommandEnd(p, timestamp);
-
-      // Patch apply lifecycle
-      case 'patch_apply_begin':
-        return this.parsePatchApplyBegin(p, timestamp);
-      case 'patch_apply_end':
-        return this.parsePatchApplyEnd(p, timestamp);
-
-      // Back-compat / legacy tool-style events
-      case 'tool_use':
-      case 'apply_patch':
-        return this.parseToolUse(eventType, p, timestamp);
-
-      case 'exec_command_output_delta':
-        // stdout/stderr stream; timeline is command/audit focused (not raw output)
-        return null;
-
-      case 'tool_result':
-      case 'background_event':
-        return this.parseToolResult(eventType, p, timestamp);
-
-      case 'task_complete':
-        return this.parseTaskComplete(p, timestamp);
-
-      case 'turn_aborted':
-        return this.parseTurnAborted(p, timestamp);
-
-      case 'error':
-        return this.parseError(p, timestamp);
-
-      default:
-        // Log unknown events for debugging
-        return {
-          id: uuidv4(),
-          timestamp,
-          entryType: 'system_message',
-          content: `Event: ${eventType}`,
-          metadata: p as Record<string, unknown>,
-        };
-    }
-  }
-
-  private parseSessionConfigured(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'system_message',
-      content: 'Session configured',
-      metadata: {
-        ...params as unknown as Record<string, unknown>,
-      },
-    };
-  }
-
-  private parseUserMessage(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    const content = this.extractContent(params.message);
-
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'user_message',
-      content,
-    };
-  }
-
-  private parseAssistantMessage(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    const content = this.extractContent(params.message) || params.content || '';
-
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'assistant_message',
-      content,
-      metadata: {
-        ...(params as unknown as Record<string, unknown>),
-      },
-    };
-  }
-
-  private parseAssistantDelta(params: CodexEventParams, timestamp: string, panelId?: string): NormalizedEntry | null {
-    const delta = typeof (params as { delta?: unknown }).delta === 'string' ? (params as { delta: string }).delta : '';
-    if (!delta) return null;
-
-    const key = panelId || 'unknown';
-    const current = this.assistantDeltaByPanel.get(key) || { id: uuidv4(), text: '' };
-    current.text += delta;
-    this.assistantDeltaByPanel.set(key, current);
-
-    return {
-      id: current.id,
-      timestamp,
-      entryType: 'assistant_message',
-      content: current.text,
-      metadata: {
-        streaming: true,
-        ...(params as unknown as Record<string, unknown>),
-      },
-    };
-  }
-
-  private parseReasoning(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'thinking',
-      content: params.reasoning || params.content || '',
-    };
-  }
-
-  private parseReasoningDelta(params: CodexEventParams, timestamp: string, panelId?: string): NormalizedEntry | null {
-    const delta = typeof (params as { delta?: unknown }).delta === 'string' ? (params as { delta: string }).delta : '';
-    if (!delta) return null;
-
-    const key = panelId || 'unknown';
-    const current = this.reasoningDeltaByPanel.get(key) || { id: uuidv4(), text: '' };
-    current.text += delta;
-    this.reasoningDeltaByPanel.set(key, current);
-
-    return {
-      id: current.id,
-      timestamp,
-      entryType: 'thinking',
-      content: current.text,
-      metadata: {
-        streaming: true,
-        ...(params as unknown as Record<string, unknown>),
-      },
-    };
-  }
-
   private parseV2AgentMessageDelta(params: unknown, timestamp: string, panelId?: string): NormalizedEntry | null {
     const p = params as { itemId?: unknown; delta?: unknown; item_id?: unknown };
     const itemId = typeof p.itemId === 'string'
@@ -297,7 +149,7 @@ export class CodexMessageParser {
     };
   }
 
-  private parseV2ReasoningDelta(params: unknown, timestamp: string): NormalizedEntry | null {
+  private parseV2ReasoningDelta(params: unknown, timestamp: string, panelId?: string): NormalizedEntry | null {
     const p = params as { itemId?: unknown; delta?: unknown; item_id?: unknown };
     const itemId = typeof p.itemId === 'string'
       ? p.itemId
@@ -311,6 +163,12 @@ export class CodexMessageParser {
     current.text += delta;
     this.reasoningDeltaByItem.set(itemId, current);
 
+    const merged = this.maybeCoalesceReasoning(panelId, current.text, timestamp, {
+      streaming: true,
+      ...(params as Record<string, unknown>),
+    });
+    if (merged) return merged;
+
     return {
       id: current.id,
       timestamp,
@@ -323,24 +181,25 @@ export class CodexMessageParser {
     };
   }
 
-  private parseV2ItemStarted(params: unknown, timestamp: string): NormalizedEntry | null {
+  private parseV2ItemStarted(params: unknown, timestamp: string, panelId?: string): NormalizedEntry | null {
     const p = params as { item?: unknown };
     const item = (p && typeof p === 'object' && 'item' in p) ? (p as { item: unknown }).item : null;
     if (!item || typeof item !== 'object') return null;
-    return this.parseV2ThreadItem(item as Record<string, unknown>, timestamp, 'started');
+    return this.parseV2ThreadItem(item as Record<string, unknown>, timestamp, 'started', panelId);
   }
 
-  private parseV2ItemCompleted(params: unknown, timestamp: string): NormalizedEntry | null {
+  private parseV2ItemCompleted(params: unknown, timestamp: string, panelId?: string): NormalizedEntry | null {
     const p = params as { item?: unknown };
     const item = (p && typeof p === 'object' && 'item' in p) ? (p as { item: unknown }).item : null;
     if (!item || typeof item !== 'object') return null;
-    return this.parseV2ThreadItem(item as Record<string, unknown>, timestamp, 'completed');
+    return this.parseV2ThreadItem(item as Record<string, unknown>, timestamp, 'completed', panelId);
   }
 
   private parseV2ThreadItem(
     item: Record<string, unknown>,
     timestamp: string,
-    phase: 'started' | 'completed'
+    phase: 'started' | 'completed',
+    panelId?: string
   ): NormalizedEntry | null {
     const type = typeof item.type === 'string' ? item.type : '';
     const id = typeof item.id === 'string' ? item.id : uuidv4();
@@ -377,7 +236,8 @@ export class CodexMessageParser {
         const streamed = this.reasoningDeltaByItem.get(id);
         if (streamed) {
           this.reasoningDeltaByItem.delete(id);
-          return {
+          const merged = this.maybeCoalesceReasoning(panelId, streamed.text, timestamp, item);
+          return merged || {
             id,
             timestamp,
             entryType: 'thinking',
@@ -390,7 +250,8 @@ export class CodexMessageParser {
         const content = Array.isArray(item.content) ? item.content.map(String).join('\n') : '';
         const text = [summary, content].filter(Boolean).join('\n');
         if (!text) return null;
-        return {
+        const merged = this.maybeCoalesceReasoning(panelId, text, timestamp, item);
+        return merged || {
           id,
           timestamp,
           entryType: 'thinking',
@@ -522,6 +383,37 @@ export class CodexMessageParser {
     return null;
   }
 
+  private maybeCoalesceReasoning(
+    panelId: string | undefined,
+    rawText: string,
+    timestamp: string,
+    metadata: Record<string, unknown>
+  ): NormalizedEntry | null {
+    if (!panelId) return null;
+
+    // Only coalesce short single-line phase/status markers.
+    // Use rawText (pre-normalization) to avoid `.trim()` masking newlines during streaming.
+    if (rawText.includes('\n')) return null;
+
+    const normalized = this.normalizeReasoningText(rawText);
+    const isSingleLine = !normalized.includes('\n');
+    // Only coalesce short "phase/status" markers. Keep longer reasoning as standalone messages.
+    if (!isSingleLine || normalized.length > 120) return null;
+
+    const key = panelId;
+    const current = this.reasoningByPanel.get(key) || { id: uuidv4(), text: '' };
+    current.text = normalized;
+    this.reasoningByPanel.set(key, current);
+
+    return {
+      id: current.id,
+      timestamp,
+      entryType: 'thinking',
+      content: current.text,
+      metadata,
+    };
+  }
+
   private parseTurnPlanUpdated(params: unknown, timestamp: string): NormalizedEntry | null {
     const p = params as { explanation?: unknown; plan?: unknown };
     const explanation = typeof p.explanation === 'string' ? p.explanation : '';
@@ -558,229 +450,6 @@ export class CodexMessageParser {
       entryType: 'error_message',
       content: message,
       metadata: params as Record<string, unknown>,
-    };
-  }
-
-  private parseExecCommandBegin(params: CodexEventParams, timestamp: string): NormalizedEntry | null {
-    const callId = typeof (params as { call_id?: unknown }).call_id === 'string' ? (params as { call_id: string }).call_id : null;
-    const cmdArr = Array.isArray((params as { command?: unknown }).command) ? (params as { command: unknown[] }).command : null;
-    const command = cmdArr ? cmdArr.map(String).join(' ') : (typeof (params as { command?: unknown }).command === 'string' ? String((params as { command: unknown }).command) : '');
-    if (!callId || !command) return null;
-
-    return {
-      id: callId,
-      timestamp,
-      entryType: 'tool_use',
-      content: command,
-      toolName: 'exec_command',
-      toolStatus: 'pending',
-      actionType: { type: 'command_run', command },
-      metadata: { ...(params as unknown as Record<string, unknown>) },
-    };
-  }
-
-  private parseExecCommandEnd(params: CodexEventParams, timestamp: string): NormalizedEntry | null {
-    const callId = typeof (params as { call_id?: unknown }).call_id === 'string' ? (params as { call_id: string }).call_id : null;
-    if (!callId) return null;
-    const exitCode = typeof (params as { exit_code?: unknown }).exit_code === 'number' ? (params as { exit_code: number }).exit_code : undefined;
-    const ok = typeof exitCode === 'number' ? exitCode === 0 : !(params as { is_error?: unknown }).is_error;
-
-    return {
-      id: callId,
-      timestamp,
-      entryType: 'tool_result',
-      content: '',
-      toolStatus: ok ? 'success' : 'failed',
-      metadata: { ...(params as unknown as Record<string, unknown>) },
-    };
-  }
-
-  private parsePatchApplyBegin(params: CodexEventParams, timestamp: string): NormalizedEntry | null {
-    const callId = typeof (params as { call_id?: unknown }).call_id === 'string' ? (params as { call_id: string }).call_id : null;
-    if (!callId) return null;
-    const changes = (params as { changes?: unknown }).changes;
-    const files = changes && typeof changes === 'object' ? Object.keys(changes as Record<string, unknown>) : [];
-    const label = files.length <= 3
-      ? `Apply patch: ${files.join(', ') || 'changes'}`
-      : `Apply patch: ${files.slice(0, 3).join(', ')} (+${files.length - 3} more)`;
-
-    return {
-      id: callId,
-      timestamp,
-      entryType: 'tool_use',
-      content: label,
-      toolName: 'apply_patch',
-      toolStatus: 'pending',
-      actionType: { type: 'file_edit', path: files[0] ? String(files[0]) : '' },
-      metadata: { ...(params as unknown as Record<string, unknown>) },
-    };
-  }
-
-  private parsePatchApplyEnd(params: CodexEventParams, timestamp: string): NormalizedEntry | null {
-    const callId = typeof (params as { call_id?: unknown }).call_id === 'string' ? (params as { call_id: string }).call_id : null;
-    if (!callId) return null;
-    const success = (params as { success?: unknown }).success;
-    const ok = typeof success === 'boolean' ? success : !(params as { is_error?: unknown }).is_error;
-
-    return {
-      id: callId,
-      timestamp,
-      entryType: 'tool_result',
-      content: '',
-      toolStatus: ok ? 'success' : 'failed',
-      metadata: { ...(params as unknown as Record<string, unknown>) },
-    };
-  }
-
-  private parseToolUse(eventType: string, params: CodexEventParams, timestamp: string): NormalizedEntry {
-    const toolName = params.tool_name || eventType;
-    const input = params.tool_input || params as Record<string, unknown>;
-    const actionType = this.inferActionType(toolName, input);
-
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'tool_use',
-      content: this.formatToolInput(toolName, input),
-      toolName,
-      toolStatus: 'pending',
-      actionType,
-      metadata: {
-        input,
-      },
-    };
-  }
-
-  private parseToolResult(eventType: string, params: CodexEventParams, timestamp: string): NormalizedEntry {
-    const isError = params.is_error || false;
-    const result = params.result || params.content || '';
-
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'tool_result',
-      content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-      toolStatus: isError ? 'failed' : 'success',
-      metadata: {
-        is_error: isError,
-        event_type: eventType,
-      },
-    };
-  }
-
-  private parseTaskComplete(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'system_message',
-      content: 'Task completed',
-      metadata: params as Record<string, unknown>,
-    };
-  }
-
-  private parseTurnAborted(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'system_message',
-      content: 'Turn aborted',
-      metadata: params as Record<string, unknown>,
-    };
-  }
-
-  private parseError(params: CodexEventParams, timestamp: string): NormalizedEntry {
-    return {
-      id: uuidv4(),
-      timestamp,
-      entryType: 'error_message',
-      content: params.content || 'Unknown error',
-      metadata: params as Record<string, unknown>,
-    };
-  }
-
-  // ============================================================================
-  // Helper Methods
-  // ============================================================================
-
-  private extractContent(message?: CodexMessage): string {
-    if (!message) return '';
-
-    if (typeof message.content === 'string') {
-      return message.content;
-    }
-
-    if (Array.isArray(message.content)) {
-      return message.content
-        .filter((item): item is { type: 'text'; text: string } =>
-          item.type === 'text' && typeof item.text === 'string'
-        )
-        .map((item) => item.text)
-        .join('\n');
-    }
-
-    return '';
-  }
-
-  private formatToolInput(toolName: string, input: Record<string, unknown>): string {
-    const name = toolName.toLowerCase();
-
-    if (name === 'exec_command' || name === 'shell') {
-      return input.command as string || JSON.stringify(input);
-    }
-
-    if (name === 'apply_patch' || name === 'edit') {
-      const path = input.path || input.file_path;
-      return `Edit: ${path}`;
-    }
-
-    if (name === 'read_file') {
-      return `Read: ${input.path || input.file_path}`;
-    }
-
-    if (name === 'write_file') {
-      return `Write: ${input.path || input.file_path}`;
-    }
-
-    // Default
-    const keys = Object.keys(input).slice(0, 3);
-    const summary = keys.map((k) => `${k}=${String(input[k]).substring(0, 50)}`).join(', ');
-    return `${toolName}: ${summary}`;
-  }
-
-  private inferActionType(toolName: string, input: Record<string, unknown>): ActionType {
-    const name = toolName.toLowerCase();
-
-    if (name === 'read_file' || name === 'list_files') {
-      return {
-        type: 'file_read',
-        path: String(input.path || input.file_path || ''),
-      };
-    }
-
-    if (name === 'apply_patch' || name === 'edit') {
-      return {
-        type: 'file_edit',
-        path: String(input.path || input.file_path || ''),
-      };
-    }
-
-    if (name === 'write_file') {
-      return {
-        type: 'file_write',
-        path: String(input.path || input.file_path || ''),
-      };
-    }
-
-    if (name === 'exec_command' || name === 'shell') {
-      return {
-        type: 'command_run',
-        command: String(input.command || ''),
-      };
-    }
-
-    return {
-      type: 'other',
-      description: toolName,
     };
   }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { GitCommit, Copy } from 'lucide-react';
 import { colors } from './constants';
-import { formatCommitTime } from './utils';
+import { formatCommitHoverTitle, formatCommitTime } from './utils';
 import type { CommitItemProps } from './types';
 
 export const CommitItem: React.FC<CommitItemProps> = React.memo(
@@ -10,6 +10,7 @@ export const CommitItem: React.FC<CommitItemProps> = React.memo(
     const isUncommitted = commit.id === 0;
     const isBase = commit.id === -1;
     const shortHash = isUncommitted ? '' : commit.after_commit_hash.substring(0, 7);
+    const hoverTitle = formatCommitHoverTitle(commit);
 
     const handleCopyHash = useCallback(
       async (e: React.MouseEvent) => {
@@ -38,6 +39,7 @@ export const CommitItem: React.FC<CommitItemProps> = React.memo(
         }}
         onMouseEnter={() => !isBase && setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        title={hoverTitle}
       >
         <button
           type="button"
@@ -45,6 +47,7 @@ export const CommitItem: React.FC<CommitItemProps> = React.memo(
           className="flex-1 min-w-0 flex items-start gap-2 outline-none focus:ring-1 focus:ring-blue-500/40 rounded"
           style={{ cursor: isBase ? 'default' : 'pointer' }}
           aria-label={`Select commit ${isUncommitted ? 'uncommitted changes' : shortHash}`}
+          title={hoverTitle}
         >
           <div
             className="mt-0.5"

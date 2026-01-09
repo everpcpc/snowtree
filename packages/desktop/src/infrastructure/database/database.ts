@@ -2402,7 +2402,8 @@ export class DatabaseService {
         tool_use_id,
         questions,
         answers,
-        action_type
+        action_type,
+        thinking_id
       FROM timeline_events
       WHERE session_id = ?
       ORDER BY seq ASC
@@ -2430,6 +2431,7 @@ export class DatabaseService {
       questions: string | null;
       answers: string | null;
       action_type: string | null;
+      thinking_id: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -2455,7 +2457,8 @@ export class DatabaseService {
       tool_use_id: row.tool_use_id ?? undefined,
       questions: row.questions ?? undefined,
       answers: row.answers ?? undefined,
-      action_type: row.action_type ?? undefined
+      action_type: row.action_type ?? undefined,
+      thinking_id: row.thinking_id ?? undefined
     }));
   }
 

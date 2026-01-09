@@ -43,6 +43,15 @@ describe('CommitItem', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('adds a hover title with full commit details', () => {
+    render(<CommitItem commit={defaultCommit} isSelected={false} onClick={() => {}} />);
+    const btn = screen.getByRole('button', { name: /select commit/i });
+    expect(btn.getAttribute('title')).toContain('Fix bug in parser');
+    expect(btn.getAttribute('title')).toContain('Author:');
+    expect(btn.getAttribute('title')).toContain('Date:');
+    expect(btn.getAttribute('title')).toContain('Hash: abc1234567890def');
+  });
+
   it('renders copy button for regular commits', () => {
     render(<CommitItem commit={defaultCommit} isSelected={false} onClick={() => {}} />);
     expect(screen.getByTitle('Copy commit hash')).toBeInTheDocument();

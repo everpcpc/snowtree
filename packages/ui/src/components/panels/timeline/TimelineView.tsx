@@ -75,7 +75,7 @@ type CommandInfo = {
 type TimelineItem =
   | { type: 'userMessage'; seq: number; timestamp: string; content: string }
   | { type: 'agentResponse'; seq: number; timestamp: string; endTimestamp: string; status: 'running' | 'done' | 'error' | 'interrupted'; messages: Array<{ content: string; timestamp: string }>; commands: CommandInfo[] }
-  | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean }
+  | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null }
   | { type: 'toolCall'; seq: number; timestamp: string; toolName: string; toolInput?: string; toolResult?: string; isError?: boolean; exitCode?: number }
   | { type: 'userQuestion'; seq: number; timestamp: string; toolUseId: string; questions: Question[]; status: 'pending' | 'answered'; answers?: Record<string, string | string[]> };
 
@@ -84,13 +84,20 @@ const getOperationId = (event: TimelineEvent) => {
   return typeof id === 'string' ? id : null;
 };
 
+const isSingleLineCodexPhaseMarker = (text: string): boolean => {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (t.includes('\n')) return false;
+  return t.length <= 120;
+};
+
 // Build timeline items - groups everything between user messages into agent responses
-const buildItems = (events: TimelineEvent[]): TimelineItem[] => {
+const buildItems = (events: TimelineEvent[], sessionToolType?: Session['toolType']): TimelineItem[] => {
   type FlatItem =
     | { type: 'user'; seq: number; timestamp: string; content: string }
     | { type: 'assistant'; seq: number; timestamp: string; content: string }
     | { type: 'command'; seq: number; timestamp: string; kind: 'cli' | 'git' | 'worktree'; status?: TimelineEvent['status']; command: string; cwd?: string; durationMs?: number; exitCode?: number; tool?: string; meta?: Record<string, unknown> }
-    | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean }
+    | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null }
     | { type: 'toolCall'; seq: number; timestamp: string; toolName: string; toolInput?: string; toolResult?: string; isError?: boolean; exitCode?: number }
     | { type: 'userQuestion'; seq: number; timestamp: string; toolUseId: string; questions: Question[]; status: 'pending' | 'answered'; answers?: Record<string, string | string[]> };
 
@@ -111,12 +118,20 @@ const buildItems = (events: TimelineEvent[]): TimelineItem[] => {
     } else if (event.kind === 'chat.assistant') {
       flat.push({ type: 'assistant', seq: event.seq, timestamp: event.timestamp, content: event.command || '' });
     } else if (event.kind === 'thinking') {
+      const content = (event.content || '').trim();
+      // Codex emits lots of single-line phase markers ("Searching", "Preparing", "Respond", etc.)
+      // that are useful only as transient status. Hide them from the timeline for a cleaner UX.
+      const isCodex = sessionToolType === 'codex' || event.tool === 'codex' || event.tool === 'Codex';
+      if (isCodex && isSingleLineCodexPhaseMarker(content)) {
+        continue;
+      }
       flat.push({
         type: 'thinking',
         seq: event.seq,
         timestamp: event.timestamp,
         content: event.content || '',
-        isStreaming: Boolean(event.is_streaming)
+        isStreaming: Boolean(event.is_streaming),
+        tool: event.tool ?? null,
       });
     } else if (event.kind === 'tool_use') {
       // Pair tool_use with tool_result - use event.id as the pair key
@@ -577,11 +592,22 @@ export const TimelineView: React.FC<{
       if (event.kind === 'chat.assistant') {
         setStreamingAssistant(null);
       }
-      if (idsRef.current.has(event.id)) return;
+      const already = idsRef.current.has(event.id);
       idsRef.current.add(event.id);
       setEvents((prev) => {
-        const next = [...prev, event];
-        next.sort((a, b) => a.seq - b.seq);
+        if (!already) {
+          const next = [...prev, event];
+          next.sort((a, b) => a.seq - b.seq);
+          return next;
+        }
+        const idx = prev.findIndex((e) => e.id === event.id);
+        if (idx === -1) {
+          const next = [...prev, event];
+          next.sort((a, b) => a.seq - b.seq);
+          return next;
+        }
+        const next = [...prev];
+        next[idx] = event;
         return next;
       });
     };
@@ -647,7 +673,7 @@ export const TimelineView: React.FC<{
     setHasNew(true);
   }, [events.length, pendingMessage]);
 
-  const items = useMemo(() => buildItems(events), [events]);
+  const items = useMemo(() => buildItems(events, session.toolType), [events, session.toolType]);
 
   // Group items by time for separators
   const itemsWithSeparators = useMemo(() => {

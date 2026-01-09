@@ -28,6 +28,7 @@ const BlockCursor: React.FC<{
 
       const selection = window.getSelection();
       const editorRect = editor.getBoundingClientRect();
+      const isEditorEmpty = (editor.textContent || '').trim().length === 0;
 
       // Try to use current selection if available
       if (selection && selection.rangeCount > 0) {
@@ -35,6 +36,14 @@ const BlockCursor: React.FC<{
 
         // Check if selection is within editor
         if (editor.contains(range.startContainer)) {
+          // When there's a non-collapsed selection, the browser caret is typically hidden.
+          // Our custom block cursor should also hide to avoid looking like it's "jumping"
+          // (e.g. after Cmd/Ctrl+C where selection remains highlighted).
+          if (!range.collapsed) {
+            setPosition(null);
+            return;
+          }
+
           // Use getBoundingClientRect directly (no temp span)
           const rect = range.getBoundingClientRect();
 
@@ -66,14 +75,21 @@ const BlockCursor: React.FC<{
         }
       }
 
-      // If no valid selection or rect, use last known position or default
-      if (lastPositionRef.current) {
-        setPosition(lastPositionRef.current);
-      } else {
-        // Default to start of editor
+      // If no valid selection/rect:
+      // - When editor is empty, always reset to origin (avoid "drift" after clearing).
+      // - Otherwise, keep last known position for unfocused states.
+      if (isEditorEmpty) {
         setPosition({ top: 0, left: 0 });
         lastPositionRef.current = { top: 0, left: 0 };
+        return;
       }
+      if (lastPositionRef.current) {
+        setPosition(lastPositionRef.current);
+        return;
+      }
+
+      setPosition({ top: 0, left: 0 });
+      lastPositionRef.current = { top: 0, left: 0 };
     };
 
     // Debounced update for better performance during rapid changes
@@ -100,9 +116,11 @@ const BlockCursor: React.FC<{
     editor.addEventListener('input', debouncedUpdate);
     editor.addEventListener('paste', debouncedUpdate);
     editor.addEventListener('cut', debouncedUpdate);
+    editor.addEventListener('scroll', debouncedUpdate);
     editor.addEventListener('keydown', debouncedUpdate);
     editor.addEventListener('keyup', debouncedUpdate);
     editor.addEventListener('beforeinput', debouncedUpdate);
+    window.addEventListener('resize', debouncedUpdate);
 
     return () => {
       observer.disconnect();
@@ -110,9 +128,11 @@ const BlockCursor: React.FC<{
       editor.removeEventListener('input', debouncedUpdate);
       editor.removeEventListener('paste', debouncedUpdate);
       editor.removeEventListener('cut', debouncedUpdate);
+      editor.removeEventListener('scroll', debouncedUpdate);
       editor.removeEventListener('keydown', debouncedUpdate);
       editor.removeEventListener('keyup', debouncedUpdate);
       editor.removeEventListener('beforeinput', debouncedUpdate);
+      window.removeEventListener('resize', debouncedUpdate);
       if (updateTimeoutRef.current !== null) {
         cancelAnimationFrame(updateTimeoutRef.current);
       }
@@ -124,6 +144,7 @@ const BlockCursor: React.FC<{
   return (
     <div
       className="absolute pointer-events-none"
+      data-testid="input-block-cursor"
       style={{
         top: position.top,
         left: position.left,
@@ -347,6 +368,17 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
   const escTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const imageIdCounter = useRef(0);
   const savedSelectionRef = useRef<{ start: Node; offset: number } | null>(null);
+  const inputHistoryRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number | null>(null); // index into inputHistoryRef.current
+  const draftBeforeHistoryRef = useRef<string>('');
+  const historyNavPrimedRef = useRef<'up' | 'down' | null>(null);
+  const emitSelectionChange = useCallback(() => {
+    try {
+      document.dispatchEvent(new Event('selectionchange'));
+    } catch {
+      // best-effort
+    }
+  }, []);
 
   const getEditorText = useCallback(() => {
     if (!editorRef.current) return '';
@@ -363,95 +395,68 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     const editor = editorRef.current;
     if (!editor) return;
 
-    const currentText = editor.innerText || '';
-    console.log('═══════════════════════════════════════════');
-    console.log('[InputBar] insertTextAtCursor called');
-    console.log('[InputBar] Text to insert length:', text.length);
-    console.log('[InputBar] Current editor content:', `"${currentText}"`);
-    console.log('[InputBar] Current editor length:', currentText.length);
-
     const selection = window.getSelection();
-    if (!selection) {
-      console.log('[InputBar] ERROR: No selection available');
-      return;
-    }
+    if (!selection) return;
 
     let range: Range;
-    let method = '';
 
-    // Try to restore saved selection first
-    if (savedSelectionRef.current && editor.contains(savedSelectionRef.current.start)) {
-      method = 'restored-saved';
+    // Prefer the *current* selection if it's within the editor. This is critical for paste:
+    // `savedSelectionRef` can be stale (e.g. user clicked to reposition caret then pasted).
+    if (selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).startContainer)) {
+      range = selection.getRangeAt(0);
+    // Fallback: restore saved selection (used by global keypress/paste handlers when editor isn't focused).
+    } else if (savedSelectionRef.current && editor.contains(savedSelectionRef.current.start)) {
       range = document.createRange();
       try {
         range.setStart(savedSelectionRef.current.start, savedSelectionRef.current.offset);
         range.collapse(true);
-        console.log('[InputBar] Using SAVED cursor position');
-        console.log('[InputBar]   - Saved offset:', savedSelectionRef.current.offset);
-        console.log('[InputBar]   - Saved text:', savedSelectionRef.current.start.textContent?.substring(0, 30));
       } catch (err) {
-        method = 'restored-failed-fallback';
-        console.log('[InputBar] ERROR: Restore failed, using end', err);
         range = document.createRange();
         range.selectNodeContents(editor);
         range.collapse(false); // End of editor
       }
-    } else if (selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).startContainer)) {
-      method = 'existing-selection';
-      range = selection.getRangeAt(0);
-      console.log('[InputBar] Using EXISTING selection');
-      console.log('[InputBar]   - Current offset:', range.startOffset);
-      console.log('[InputBar]   - Current text:', range.startContainer.textContent?.substring(0, 30));
     } else {
-      method = 'default-end';
       range = document.createRange();
       range.selectNodeContents(editor);
       range.collapse(false);
-      console.log('[InputBar] WARNING: No valid selection, using END');
     }
 
-    console.log('[InputBar] Insert method:', method);
-    console.log('[InputBar] Has saved position:', !!savedSelectionRef.current);
-
     // Delete any selected content and insert text
-    console.log('[InputBar] Deleting selection and inserting text...');
     range.deleteContents();
     const textNode = document.createTextNode(text);
     range.insertNode(textNode);
-    console.log('[InputBar] Text node inserted');
 
-    // Move cursor to end of inserted text
-    range.setStartAfter(textNode);
-    range.setEndAfter(textNode);
-    range.collapse(true);
-    console.log('[InputBar] Cursor moved to after inserted text');
+    // Move cursor to end of inserted text.
+    // Keep the caret anchored inside the inserted text node: this is more stable for our
+    // custom BlockCursor positioning than using `setStartAfter` (which can land on the parent).
+    try {
+      const endOffset = textNode.data.length;
+      range.setStart(textNode, endOffset);
+      range.setEnd(textNode, endOffset);
+      range.collapse(true);
+    } catch {
+      // Fallback
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      range.collapse(true);
+    }
 
     // Update selection
     selection.removeAllRanges();
     selection.addRange(range);
-    console.log('[InputBar] Selection updated');
 
     // Save the new position
     const newOffset = range.startOffset;
     savedSelectionRef.current = { start: range.startContainer, offset: newOffset };
-    console.log('[InputBar] NEW position saved');
-    console.log('[InputBar]   - New offset:', newOffset);
-    console.log('[InputBar]   - New position text:', range.startContainer.textContent?.substring(0, 30));
 
     // Trigger input event
     editor.dispatchEvent(new Event('input', { bubbles: true }));
-
-    const finalText = editor.innerText || '';
-    console.log('[InputBar] Final editor content:', `"${finalText}"`);
-    console.log('[InputBar] Final content length:', finalText.length);
-    console.log('═══════════════════════════════════════════');
-  }, []);
+    emitSelectionChange();
+  }, [emitSelectionChange]);
 
   const insertImageTag = useCallback((index: number, id: string) => {
     const editor = editorRef.current;
     if (!editor) return;
-
-    console.log('[InputBar] insertImageTag called, index:', index, 'id:', id);
 
     const pill = document.createElement('span');
     pill.textContent = `[img${index}]`;
@@ -471,59 +476,28 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     `;
 
     const selection = window.getSelection();
-    if (!selection) {
-      console.log('[InputBar] ERROR: No selection for image insert');
-      return;
-    }
-
-    console.log('[InputBar] ===== CHECKING SAVED POSITION =====');
-    console.log('[InputBar] savedSelectionRef.current exists?', !!savedSelectionRef.current);
-    if (savedSelectionRef.current) {
-      console.log('[InputBar] saved node in editor?', editor.contains(savedSelectionRef.current.start));
-      console.log('[InputBar] saved node text:', savedSelectionRef.current.start.textContent?.substring(0, 50));
-      console.log('[InputBar] saved offset:', savedSelectionRef.current.offset);
-    }
-    console.log('[InputBar] ======================================');
+    if (!selection) return;
 
     let range: Range;
-    let method = '';
 
-    // Try to restore saved selection first (same as insertTextAtCursor)
-    if (savedSelectionRef.current && editor.contains(savedSelectionRef.current.start)) {
-      method = 'restored-saved';
+    // Prefer the *current* selection if it's within the editor.
+    if (selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).startContainer)) {
+      range = selection.getRangeAt(0);
+    } else if (savedSelectionRef.current && editor.contains(savedSelectionRef.current.start)) {
       range = document.createRange();
       try {
-        console.log('[InputBar] BEFORE setStart - saved node type:', savedSelectionRef.current.start.nodeType);
-        console.log('[InputBar] BEFORE setStart - saved node text:', savedSelectionRef.current.start.textContent?.substring(0, 50));
-        console.log('[InputBar] BEFORE setStart - saved offset:', savedSelectionRef.current.offset);
-        console.log('[InputBar] BEFORE setStart - editor full text:', editor.innerText);
-
         range.setStart(savedSelectionRef.current.start, savedSelectionRef.current.offset);
         range.collapse(true);
-
-        console.log('[InputBar] AFTER setStart - range container:', range.startContainer.textContent?.substring(0, 50));
-        console.log('[InputBar] AFTER setStart - range offset:', range.startOffset);
-        console.log('[InputBar] Image insert using SAVED position');
-      } catch (err) {
-        method = 'restored-failed-fallback';
-        console.log('[InputBar] ERROR: Restore failed for image, using end', err);
+      } catch {
         range = document.createRange();
         range.selectNodeContents(editor);
         range.collapse(false);
       }
-    } else if (selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).startContainer)) {
-      method = 'existing-selection';
-      range = selection.getRangeAt(0);
-      console.log('[InputBar] Image insert using EXISTING selection');
     } else {
-      method = 'default-end';
       range = document.createRange();
       range.selectNodeContents(editor);
       range.collapse(false);
-      console.log('[InputBar] WARNING: No valid selection for image, using END');
     }
-
-    console.log('[InputBar] Image insert method:', method);
 
     // Insert pill
     range.deleteContents();
@@ -535,13 +509,9 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     const space = document.createTextNode(' ');
     range.insertNode(space);
 
-    // CRITICAL: Set range to point to the END of the space text node
-    // This ensures BlockCursor can correctly calculate position
     range.setStart(space, space.length);
     range.setEnd(space, space.length);
     range.collapse(true);
-
-    console.log('[InputBar] Range set to end of space node, offset:', space.length, 'text:', space.textContent);
 
     // Update selection first
     selection.removeAllRanges();
@@ -549,26 +519,12 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
 
     // Save the new position - pointing to the space text node
     savedSelectionRef.current = { start: space, offset: space.length };
-    console.log('[InputBar] Image inserted, NEW position saved to space text node, offset:', space.length);
 
     // Focus after setting selection
     editor.focus();
-
-    // Use requestAnimationFrame to ensure selection is stable before triggering input
-    requestAnimationFrame(() => {
-      // Verify selection is still correct
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const currentRange = sel.getRangeAt(0);
-        console.log('[InputBar] After RAF - range offset:', currentRange.startOffset);
-        console.log('[InputBar] After RAF - range container:', currentRange.startContainer.textContent?.substring(0, 50));
-      }
-
-      // Trigger input event to update BlockCursor
-      editor.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('[InputBar] Input event dispatched to update cursor');
-    });
-  }, []);
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    emitSelectionChange();
+  }, [emitSelectionChange]);
 
   const addImageAttachment = useCallback((file: File): Promise<void> => {
     return new Promise((resolve) => {
@@ -619,6 +575,53 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     }
   }, [addImageAttachment, insertTextAtCursor]);
 
+  const moveCursorToEnd = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    try {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      // Prefer anchoring inside the last text node for stable caret + BlockCursor.
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      let last: Text | null = null;
+      let node = walker.nextNode();
+      while (node) {
+        const t = node as Text;
+        if (t.data.length > 0) last = t;
+        node = walker.nextNode();
+      }
+      if (last) {
+        range.setStart(last, last.data.length);
+        range.collapse(true);
+      } else {
+        range.selectNodeContents(editor);
+        range.collapse(false);
+      }
+      selection.removeAllRanges();
+      selection.addRange(range);
+      savedSelectionRef.current = { start: range.startContainer, offset: range.startOffset };
+      emitSelectionChange();
+    } catch {
+      // best-effort
+    }
+  }, [emitSelectionChange]);
+
+  const handleEditorCopy = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    void e;
+    // Allow the browser to perform the copy. Then collapse selection and move caret to the end,
+    // which matches typical chat-input UX (copy then keep typing at end).
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer)) return;
+
+    requestAnimationFrame(() => moveCursorToEnd());
+  }, [moveCursorToEnd]);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -640,26 +643,226 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     if (!text && imageAttachments.length === 0) return;
     if (isProcessing) return;
 
+    if (text) {
+      const hist = inputHistoryRef.current;
+      if (hist.length === 0 || hist[hist.length - 1] !== text) {
+        inputHistoryRef.current = [...hist, text].slice(-100);
+      }
+      historyIndexRef.current = null;
+      draftBeforeHistoryRef.current = '';
+    }
+
     onSend(text, imageAttachments.length > 0 ? imageAttachments : undefined);
     if (editorRef.current) {
-      editorRef.current.innerHTML = '';
+      const editor = editorRef.current;
+      editor.innerHTML = '';
+
+      // Reset selection to the start so BlockCursor doesn't keep a stale/removed position.
+      // Also reset the saved selection, since previous nodes may no longer exist.
+      try {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        savedSelectionRef.current = { start: editor, offset: 0 };
+        emitSelectionChange();
+      } catch {
+        savedSelectionRef.current = null;
+      }
     }
     setImageAttachments([]);
     setIsEmpty(true);
-  }, [getEditorText, imageAttachments, isProcessing, onSend]);
+  }, [emitSelectionChange, getEditorText, imageAttachments, isProcessing, onSend]);
 
   const isRunning = session.status === 'running' || session.status === 'initializing';
+
+  const placeCaretAtBoundary = useCallback((which: 'start' | 'end') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    try {
+      const selection = window.getSelection();
+      if (!selection) return;
+
+      const range = document.createRange();
+
+      // Prefer anchoring inside a text node (more reliable for visual caret + BlockCursor).
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      const texts: Text[] = [];
+      let node = walker.nextNode();
+      while (node) {
+        const t = node as Text;
+        if (t.data.length > 0) texts.push(t);
+        node = walker.nextNode();
+      }
+
+      if (texts.length === 0) {
+        range.selectNodeContents(editor);
+        range.collapse(which === 'start');
+      } else if (which === 'start') {
+        range.setStart(texts[0], 0);
+        range.collapse(true);
+      } else {
+        const last = texts[texts.length - 1];
+        range.setStart(last, last.data.length);
+        range.collapse(true);
+      }
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+      savedSelectionRef.current = { start: range.startContainer, offset: range.startOffset };
+      emitSelectionChange();
+    } catch {
+      // best-effort
+    }
+  }, [emitSelectionChange]);
+
+  const setEditorTextAndMoveCaretToEnd = useCallback((text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.textContent = text;
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    placeCaretAtBoundary('end');
+  }, [placeCaretAtBoundary]);
+
+  const isCaretAtBoundary = useCallback((which: 'start' | 'end'): boolean => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return false;
+    const caret = selection.getRangeAt(0);
+    if (!editor.contains(caret.startContainer)) return false;
+    if (!caret.collapsed) return false;
+    const getCaretTextOffset = (): number | null => {
+      try {
+        if (caret.startContainer === editor) {
+          const childCount = editor.childNodes.length;
+          const idx = Math.max(0, Math.min(caret.startOffset, childCount));
+          let off = 0;
+          for (let i = 0; i < idx; i++) {
+            off += (editor.childNodes[i]?.textContent || '').length;
+          }
+          return off;
+        }
+
+        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+        let off = 0;
+        let node: Node | null = walker.nextNode();
+        while (node) {
+          if (node === caret.startContainer) {
+            const textLen = (node.textContent || '').length;
+            const clamped = Math.max(0, Math.min(caret.startOffset, textLen));
+            return off + clamped;
+          }
+          off += (node.textContent || '').length;
+          node = walker.nextNode();
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    };
+
+    const offset = getCaretTextOffset();
+    if (offset === null) return false;
+    const total = (editor.textContent || '').length;
+    return which === 'start' ? offset === 0 : offset === total;
+  }, []);
+
+  const moveCaretToBoundary = useCallback((which: 'start' | 'end') => {
+    placeCaretAtBoundary(which);
+  }, [placeCaretAtBoundary]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (isRunning) {
       e.preventDefault();
       return;
     }
+
+    // Input history navigation (shell-like).
+    // - First ArrowUp/Down jumps caret to start/end.
+    // - Second ArrowUp/Down (when already at boundary) cycles through sent prompts.
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const history = inputHistoryRef.current;
+      const inHistory = historyIndexRef.current !== null;
+      const direction: 'up' | 'down' = e.key === 'ArrowUp' ? 'up' : 'down';
+
+      const goPrev = () => {
+        if (history.length === 0) return;
+        if (historyIndexRef.current === null) {
+          draftBeforeHistoryRef.current = getEditorText();
+          historyIndexRef.current = history.length - 1;
+        } else if (historyIndexRef.current > 0) {
+          historyIndexRef.current -= 1;
+        }
+        const idx = historyIndexRef.current;
+        if (idx === null) return;
+        setEditorTextAndMoveCaretToEnd(history[idx]);
+      };
+
+      const goNext = () => {
+        if (history.length === 0) return;
+        if (historyIndexRef.current === null) return;
+        if (historyIndexRef.current < history.length - 1) {
+          historyIndexRef.current += 1;
+          setEditorTextAndMoveCaretToEnd(history[historyIndexRef.current]);
+          return;
+        }
+        // Past the newest entry => restore draft and exit history.
+        historyIndexRef.current = null;
+        const draft = draftBeforeHistoryRef.current;
+        draftBeforeHistoryRef.current = '';
+        setEditorTextAndMoveCaretToEnd(draft);
+      };
+
+      e.preventDefault();
+
+      // While browsing history, ArrowUp/Down always navigates history.
+      if (inHistory) {
+        historyNavPrimedRef.current = direction;
+        if (direction === 'up') goPrev();
+        else goNext();
+        return;
+      }
+
+      // Two-step behavior: first press always moves caret to boundary (even if already there),
+      // second press (while still at boundary) triggers history navigation.
+      if (historyNavPrimedRef.current !== direction) {
+        historyNavPrimedRef.current = direction;
+        moveCaretToBoundary(direction === 'up' ? 'start' : 'end');
+        return;
+      }
+
+      if (direction === 'up') {
+        if (!isCaretAtBoundary('start')) {
+          moveCaretToBoundary('start');
+          return;
+        }
+        goPrev();
+        return;
+      }
+
+      // direction === 'down'
+      if (!isCaretAtBoundary('end')) {
+        moveCaretToBoundary('end');
+        return;
+      }
+      // At end and not in history: nothing to do.
+      return;
+    }
+
+    // Any other key resets the two-step arrow priming.
+    historyNavPrimedRef.current = null;
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
-  }, [handleSubmit, isRunning]);
+  }, [getEditorText, handleSubmit, isCaretAtBoundary, isRunning, moveCaretToBoundary, setEditorTextAndMoveCaretToEnd]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -738,17 +941,36 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
         return;
       }
 
+      // Ctrl/Cmd+A should select the input contents (chat-style UX), not the whole page.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const editor = editorRef.current;
+        if (!editor) return;
+        editor.focus();
+        try {
+          const selection = window.getSelection();
+          if (!selection) return;
+          const range = document.createRange();
+          range.selectNodeContents(editor);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          emitSelectionChange();
+        } catch {
+          // best-effort
+        }
+        return;
+      }
+
       // Handle Ctrl+V / Cmd+V specially (check clipboard for images)
       if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) {
-        console.log('[InputBar] Global Ctrl+V detected, activeElement:', document.activeElement?.tagName);
         e.preventDefault();
         const editor = editorRef.current;
         if (!editor) return;
 
-        console.log('[InputBar] Focusing editor for paste');
         editor.focus();
         setTimeout(async () => {
-          console.log('[InputBar] setTimeout callback executing, activeElement:', document.activeElement?.tagName);
           try {
             const clipboardItems = await navigator.clipboard.read();
             let hasImage = false;
@@ -773,19 +995,14 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
 
             if (hasText && !hasImage) {
               const text = await navigator.clipboard.readText();
-              console.log('[InputBar] Pasting text from clipboard, length:', text.length);
               insertTextAtCursor(text);
-            } else {
-              console.log('[InputBar] hasText:', hasText, 'hasImage:', hasImage);
             }
           } catch (err) {
-            console.log('[InputBar] Clipboard read failed, trying readText:', err);
             try {
               const text = await navigator.clipboard.readText();
-              console.log('[InputBar] Fallback readText success, length:', text.length);
               insertTextAtCursor(text);
             } catch {
-              console.log('[InputBar] Fallback readText also failed');
+              // best-effort
             }
           }
         }, 0);
@@ -794,31 +1011,23 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
 
       // Handle Delete/Backspace specially
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        console.log('[InputBar] Global', e.key, 'detected, activeElement:', document.activeElement?.tagName);
         e.preventDefault();
         const editor = editorRef.current;
         if (!editor) return;
 
-        console.log('[InputBar] Focusing editor for delete');
         editor.focus();
         setTimeout(() => {
-          console.log('[InputBar] Delete setTimeout callback executing');
           const selection = window.getSelection();
           if (!selection || selection.rangeCount === 0) {
-            console.log('[InputBar] No selection for delete');
             return;
           }
 
           const range = selection.getRangeAt(0);
           if (!editor.contains(range.startContainer)) {
-            console.log('[InputBar] Range not in editor');
             return;
           }
 
-          console.log('[InputBar] Delete operation, collapsed:', range.collapsed, 'offset:', range.startOffset);
-
           if (!range.collapsed) {
-            console.log('[InputBar] Deleting selected content');
             range.deleteContents();
           } else if (e.key === 'Backspace') {
             const startContainer = range.startContainer;
@@ -826,12 +1035,9 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
 
             if (startOffset > 0 && startContainer.nodeType === Node.TEXT_NODE) {
               const textNode = startContainer as Text;
-              console.log('[InputBar] Backspace deleting at offset', startOffset - 1);
               textNode.deleteData(startOffset - 1, 1);
               range.setStart(textNode, startOffset - 1);
               range.collapse(true);
-            } else {
-              console.log('[InputBar] Backspace at offset 0, cannot delete');
             }
           } else if (e.key === 'Delete') {
             const startContainer = range.startContainer;
@@ -840,10 +1046,7 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
             if (startContainer.nodeType === Node.TEXT_NODE) {
               const textNode = startContainer as Text;
               if (startOffset < textNode.length) {
-                console.log('[InputBar] Delete deleting at offset', startOffset);
                 textNode.deleteData(startOffset, 1);
-              } else {
-                console.log('[InputBar] Delete at end of text, cannot delete');
               }
             }
           }
@@ -851,7 +1054,6 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
           selection.removeAllRanges();
           selection.addRange(range);
           editor.dispatchEvent(new Event('input', { bubbles: true }));
-          console.log('[InputBar] Delete operation complete');
         }, 0);
         return;
       }
@@ -869,15 +1071,12 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       if (skipKeys.includes(e.key)) return;
 
       // Handle printable key press - focus and insert at saved position
-      console.log('[InputBar] Global key press detected:', e.key);
       e.preventDefault();
       const editor = editorRef.current;
       if (!editor) return;
 
-      console.log('[InputBar] Focusing editor for key press');
       editor.focus();
       setTimeout(() => {
-        console.log('[InputBar] Inserting key at saved position:', e.key);
         insertTextAtCursor(e.key);
       }, 0);
     };
@@ -891,7 +1090,6 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
         return;
       }
 
-      console.log('[InputBar] Global paste event detected (backup handler)');
       e.preventDefault();
       const editor = editorRef.current;
       if (!editor) return;
@@ -899,10 +1097,8 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
 
-      console.log('[InputBar] Focusing editor for backup paste');
       editor.focus();
       setTimeout(async () => {
-        console.log('[InputBar] Backup paste setTimeout executing');
         const items = Array.from(clipboardData.items);
         const imageItems = items.filter((item) => ACCEPTED_IMAGE_TYPES.includes(item.type));
 
@@ -920,13 +1116,13 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       }, 0);
     };
 
-    document.addEventListener('keydown', handleGlobalKeyPress);
+    document.addEventListener('keydown', handleGlobalKeyPress, { capture: true });
     document.addEventListener('paste', handleGlobalPasteCapture, { capture: true });
     return () => {
-      document.removeEventListener('keydown', handleGlobalKeyPress);
+      document.removeEventListener('keydown', handleGlobalKeyPress, { capture: true });
       document.removeEventListener('paste', handleGlobalPasteCapture, { capture: true });
     };
-  }, [addImageAttachment, insertTextAtCursor]);
+  }, [addImageAttachment, emitSelectionChange, insertTextAtCursor]);
 
   const loadAvailability = useCallback(async (force?: boolean) => {
     setAiToolsLoading(true);
@@ -1060,34 +1256,22 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
                   onKeyDown={handleKeyDown}
                   onInput={checkEmpty}
                   onPaste={handleEditorPaste}
+                  onCopy={handleEditorCopy}
                   onFocus={() => {
-                    console.log('[InputBar] Focus gained');
                     setIsFocused(true);
                   }}
                   onBlur={() => {
-                    console.log('[InputBar] Focus lost (blur)');
                     setIsFocused(false);
                     // Save cursor position on blur
                     const selection = window.getSelection();
                     if (selection && selection.rangeCount > 0) {
                       const range = selection.getRangeAt(0);
                       if (editorRef.current?.contains(range.startContainer)) {
-                        console.log('[InputBar] Saving position - node type:', range.startContainer.nodeType);
-                        console.log('[InputBar] Saving position - node name:', range.startContainer.nodeName);
-                        console.log('[InputBar] Saving position - node text:', range.startContainer.textContent?.substring(0, 50));
-                        console.log('[InputBar] Saving position - offset:', range.startOffset);
-                        console.log('[InputBar] Saving position - parent:', range.startContainer.parentNode?.nodeName);
-
                         savedSelectionRef.current = {
                           start: range.startContainer,
                           offset: range.startOffset,
                         };
-                        console.log('[InputBar] Saved selection on blur, offset:', range.startOffset, 'text:', range.startContainer.textContent?.substring(0, 20));
-                      } else {
-                        console.log('[InputBar] Selection not in editor, not saving');
                       }
-                    } else {
-                      console.log('[InputBar] No selection on blur');
                     }
                   }}
                   className="w-full bg-transparent text-[13px] focus:outline-none min-h-[20px] max-h-[144px] overflow-y-auto"

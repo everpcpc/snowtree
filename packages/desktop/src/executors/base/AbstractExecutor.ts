@@ -479,6 +479,13 @@ export abstract class AbstractExecutor extends EventEmitter {
 
     // Handle thinking events
     if (enriched.entryType === 'thinking') {
+      // Codex app-server emits short single-line "phase" markers ("Searching", "Respond", etc.)
+      // as thinking updates. They're useful as transient status but too noisy for the timeline.
+      if (this.getToolType() === 'codex') {
+        const text = (enriched.content || '').trim();
+        if (!text) return;
+        if (!text.includes('\n') && text.length <= 120) return;
+      }
       this.recordTimelineThinking({
         sessionId,
         panelId,
@@ -606,6 +613,7 @@ export abstract class AbstractExecutor extends EventEmitter {
         session_id: args.sessionId,
         panel_id: args.panelId,
         kind: 'thinking',
+        tool: this.getToolType(),
         thinking_id: args.thinkingId,  // Use this for UPSERT
         content: args.content,
         is_streaming: args.isStreaming ? 1 : 0,

@@ -3,6 +3,7 @@ import { colors } from './constants';
 import { StackConnector } from './StackConnector';
 import { CommitItem } from './CommitItem';
 import type { CommitData } from './types';
+import { formatCommitHoverTitle } from './utils';
 
 export interface CommitListProps {
   commits: CommitData[];
@@ -32,7 +33,7 @@ export const CommitList: React.FC<CommitListProps> = React.memo(
     return (
       <div>
         {uncommitted && (
-          <div className="flex">
+          <div className="flex" title={formatCommitHoverTitle(uncommitted)}>
             <div className="w-5 flex flex-col items-center pt-3">
               <div
                 className="w-2 h-2 rounded-full"
@@ -63,7 +64,7 @@ export const CommitList: React.FC<CommitListProps> = React.memo(
           const isSelected = selectedCommitHash === commit.after_commit_hash;
           const isLastSession = idx === sessionCommits.length - 1;
           return (
-            <div key={commit.after_commit_hash} className="flex">
+            <div key={commit.after_commit_hash} className="flex" title={formatCommitHoverTitle(commit)}>
               <div className="w-5 flex flex-col items-center pt-3">
                 <div
                   className="w-2 h-2 rounded-full"
@@ -92,7 +93,7 @@ export const CommitList: React.FC<CommitListProps> = React.memo(
         })}
 
         {baseCommit && (
-          <div className="flex">
+          <div className="flex" title={formatCommitHoverTitle(baseCommit)}>
             <div className="w-5 flex flex-col items-center pt-3">
               <div
                 className="w-2 h-2 rounded-full"

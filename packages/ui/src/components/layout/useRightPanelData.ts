@@ -101,6 +101,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
 
   const abortRef = useRef<AbortController | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const lastGitStatusSignatureRef = useRef<string | null>(null);
 
   const cancelPending = useCallback(() => {
     abortRef.current?.abort();
@@ -288,6 +289,20 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     if (!sessionId) return;
     const unsub = window.electronAPI?.events?.onGitStatusUpdated?.((data) => {
       if (!data || data.sessionId !== sessionId) return;
+      const status = (data as { gitStatus?: unknown }).gitStatus as Record<string, unknown> | undefined;
+      const signature = status ? JSON.stringify({
+        state: status.state,
+        ahead: status.ahead,
+        behind: status.behind,
+        additions: status.additions,
+        deletions: status.deletions,
+        filesChanged: status.filesChanged,
+        hasUncommittedChanges: status.hasUncommittedChanges,
+        hasUntrackedFiles: status.hasUntrackedFiles,
+        isReadyToMerge: status.isReadyToMerge,
+      }) : null;
+      if (signature && lastGitStatusSignatureRef.current === signature) return;
+      if (signature) lastGitStatusSignatureRef.current = signature;
       scheduleRefresh();
     });
     return () => { unsub?.(); };

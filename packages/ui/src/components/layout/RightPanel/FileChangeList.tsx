@@ -51,9 +51,10 @@ export const FileChangeList: React.FC<FileChangeListProps> = React.memo(
     onCommitFileClick,
     hasSelection,
   }) => {
-    // Only show loading spinner on initial load, not on refresh
-    // This prevents flickering when data is being refreshed in the background
-    const showLoading = isLoading && !hasSelection && (isWorkingTreeSelected ? !workingTree : commitFiles.length === 0);
+    // Only show the "Loading..." placeholder during the initial load.
+    // After we've loaded the working tree once, background refreshes should not
+    // replace the empty-state text (e.g. "Select a commit") with a spinner.
+    const showLoading = isLoading && !workingTree && commitFiles.length === 0;
 
     if (showLoading) {
       return (
