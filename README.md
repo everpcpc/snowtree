@@ -25,6 +25,13 @@ Round 2: AI continues → Review diff → Stage
 Round N: Done → Commit → Push PR
 ```
 
+## Prerequisites
+
+Snowtree calls AI coding agents directly via their CLI. Install at least one:
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
+- [Codex](https://github.com/openai/codex) — `npm install -g @openai/codex`
+
 ## Install
 
 Recommended (one-line installer, macOS/Linux):
