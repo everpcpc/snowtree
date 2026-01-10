@@ -86,6 +86,42 @@ download_and_install() {
   info "Downloading from: $DOWNLOAD_URL"
   curl -fL --retry 3 --connect-timeout 15 -o "$DOWNLOAD_PATH" "$DOWNLOAD_URL" || error "Download failed (bad URL or network error)"
 
+  install_cli_launcher_macos() {
+    if [ "${SNOWTREE_INSTALL_CLI:-1}" = "0" ]; then
+      return 0
+    fi
+
+    BIN_DIR="${SNOWTREE_BIN_DIR:-$HOME/.local/bin}"
+    mkdir -p "$BIN_DIR"
+    LAUNCHER="$BIN_DIR/$APP_NAME"
+
+    cat > "$LAUNCHER" <<EOF
+#!/bin/sh
+set -eu
+APP="/Applications/$APP_NAME.app"
+
+if [ ! -d "\$APP" ]; then
+  echo "[ERROR] App not found at: \$APP" >&2
+  exit 1
+fi
+
+if command -v open >/dev/null 2>&1; then
+  open "\$APP" --args "\$@"
+  exit 0
+fi
+
+exec "\$APP/Contents/MacOS/$APP_NAME" "\$@"
+EOF
+
+    chmod +x "$LAUNCHER"
+    info "Installed CLI launcher to $LAUNCHER"
+
+    case ":${PATH}:" in
+      *":$BIN_DIR:"*) : ;;
+      *) warn "Add $BIN_DIR to your PATH: export PATH=\"\$PATH:$BIN_DIR\"" ;;
+    esac
+  }
+
   case "$PLATFORM" in
     macos)
       MOUNT_POINT="$TEMP_DIR/mount"
@@ -118,6 +154,8 @@ download_and_install() {
 
       hdiutil detach "$MOUNT_POINT" -quiet || true
       info "Installed to $APP_DST"
+
+      install_cli_launcher_macos
       ;;
     linux)
       if [ "$EXT" = "deb" ]; then
@@ -140,7 +178,14 @@ download_and_install() {
   esac
 
   rm -rf "$TEMP_DIR"
-  info "Installation complete! Run '$APP_NAME' to start."
+  case "$PLATFORM" in
+    macos)
+      info "Installation complete! Open '$APP_DST' (or run '$APP_NAME' if you installed the launcher)."
+      ;;
+    *)
+      info "Installation complete! Run '$APP_NAME' to start."
+      ;;
+  esac
 }
 
 main() {
