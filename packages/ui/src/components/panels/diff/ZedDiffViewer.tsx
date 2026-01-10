@@ -375,26 +375,38 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
   const hscrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const hscrollLeftRef = useRef(0);
   const hscrollSyncingRef = useRef(false);
+  const hscrollScheduledRef = useRef<number | null>(null);
+  const hscrollPendingLeftRef = useRef<number>(0);
+  const hscrollPendingSourceRef = useRef<string | undefined>(undefined);
   const [currentHunkIdx, setCurrentHunkIdx] = useState(0);
   const [focusedHunkKey, setFocusedHunkKey] = useState<string | null>(null);
   const [focusedHunkSig, setFocusedHunkSig] = useState<{ filePath: string; sig: string; oldStart: number; newStart: number } | null>(null);
   const [hoveredHunkKey, setHoveredHunkKey] = useState<string | null>(null);
 
-  const syncAllHScrollers = useCallback((left: number, sourceFilePath?: string) => {
+  const scheduleHScrollSync = useCallback((left: number, sourceFilePath?: string) => {
     hscrollLeftRef.current = left;
-    if (hscrollSyncingRef.current) return;
-    hscrollSyncingRef.current = true;
-    try {
-      for (const [path, el] of hscrollRefs.current.entries()) {
-        if (sourceFilePath && path === sourceFilePath) continue;
-        if (Math.abs(el.scrollLeft - left) > 0.5) el.scrollLeft = left;
+    hscrollPendingLeftRef.current = left;
+    hscrollPendingSourceRef.current = sourceFilePath;
+
+    if (hscrollScheduledRef.current != null) return;
+    hscrollScheduledRef.current = requestAnimationFrame(() => {
+      hscrollScheduledRef.current = null;
+      if (hscrollSyncingRef.current) return;
+      hscrollSyncingRef.current = true;
+      try {
+        const nextLeft = hscrollPendingLeftRef.current;
+        const source = hscrollPendingSourceRef.current;
+        for (const [path, el] of hscrollRefs.current.entries()) {
+          if (source && path === source) continue;
+          if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
+        }
+      } finally {
+        // Release on next frame to avoid feedback loops.
+        requestAnimationFrame(() => {
+          hscrollSyncingRef.current = false;
+        });
       }
-    } finally {
-      // Release on next frame to avoid feedback loops.
-      requestAnimationFrame(() => {
-        hscrollSyncingRef.current = false;
-      });
-    }
+    });
   }, []);
 
   useEffect(() => {
@@ -405,15 +417,17 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
     // scroll the code, while gutters and headers remain fixed.
     const onWheel = (e: WheelEvent) => {
       if (!e.deltaX) return;
-      // Prevent the browser from attempting to scroll the outer container horizontally.
+      // Only treat this as a horizontal gesture when deltaX dominates, otherwise allow vertical scrolling.
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      // Prevent the browser from attempting to scroll the outer container horizontally (keeps gutters fixed).
       e.preventDefault();
       const next = Math.max(0, hscrollLeftRef.current + e.deltaX);
-      syncAllHScrollers(next);
+      scheduleHScrollSync(next);
     };
 
     root.addEventListener('wheel', onWheel, { passive: false });
     return () => root.removeEventListener('wheel', onWheel as any);
-  }, [syncAllHScrollers]);
+  }, [scheduleHScrollSync]);
 
   const allHunks = useMemo(() => {
     const result: Array<{ filePath: string; hunkKey: string; sig: string; oldStart: number; newStart: number; hunkHeader: string; isStaged: boolean; isUntracked: boolean }> = [];
@@ -723,7 +737,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                 onScroll={(e) => {
                   const el = e.currentTarget;
                   if (hscrollSyncingRef.current) return;
-                  syncAllHScrollers(el.scrollLeft, file.path);
+                  scheduleHScrollSync(el.scrollLeft, file.path);
                 }}
               >
               <Diff

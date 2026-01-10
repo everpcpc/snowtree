@@ -44,6 +44,30 @@ index 1234567..abcdefg 100644
 +y`;
 
 describe('ZedDiffViewer', () => {
+  function mockRaf() {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let nextId = 1;
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+      const id = nextId++;
+      callbacks.set(id, cb);
+      return id;
+    });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id: number) => {
+      callbacks.delete(id);
+    });
+    return {
+      flush() {
+        const run = Array.from(callbacks.values());
+        callbacks.clear();
+        run.forEach((cb) => cb(0));
+      },
+      restore() {
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+      },
+    };
+  }
+
   async function hoverFirstHunk(container: HTMLElement) {
     const codeCell = container.querySelector('td.diff-code') as HTMLElement | null;
     expect(codeCell).toBeTruthy();
@@ -295,5 +319,43 @@ index 1234567..abcdefg 100644
       />
     );
     expect(screen.getAllByLabelText('Hunk staged').length).toBeGreaterThan(0);
+  });
+
+  it('syncs horizontal scrolling across files on the next animation frame', () => {
+    const raf = mockRaf();
+    render(<ZedDiffViewer diff={SAMPLE_DIFF_TWO_FILES} />);
+
+    const scrollers = screen.getAllByTestId('diff-hscroll-container') as HTMLDivElement[];
+    expect(scrollers.length).toBe(2);
+
+    scrollers[0]!.scrollLeft = 120;
+    fireEvent.scroll(scrollers[0]!);
+    // rAF-throttled: should not sync until the next frame.
+    expect(scrollers[1]!.scrollLeft).toBe(0);
+
+    raf.flush();
+    expect(scrollers[1]!.scrollLeft).toBe(120);
+
+    // Second frame releases the "syncing" guard.
+    raf.flush();
+    raf.restore();
+  });
+
+  it('does not block vertical scrolling for mostly-vertical wheel gestures', () => {
+    const raf = mockRaf();
+    render(<ZedDiffViewer diff={SAMPLE_DIFF_TWO_FILES} />);
+    const root = screen.getByTestId('diff-scroll-container');
+
+    const mostlyVertical = new WheelEvent('wheel', { deltaX: 2, deltaY: 20, cancelable: true });
+    root.dispatchEvent(mostlyVertical);
+    expect(mostlyVertical.defaultPrevented).toBe(false);
+
+    const mostlyHorizontal = new WheelEvent('wheel', { deltaX: 20, deltaY: 2, cancelable: true });
+    root.dispatchEvent(mostlyHorizontal);
+    expect(mostlyHorizontal.defaultPrevented).toBe(true);
+
+    raf.flush();
+    raf.flush();
+    raf.restore();
   });
 });
