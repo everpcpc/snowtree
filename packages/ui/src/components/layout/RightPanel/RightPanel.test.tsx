@@ -55,21 +55,18 @@ describe('RightPanel - Zed-style Changes list', () => {
         },
       ],
     });
-    (API.sessions.getDiff as any).mockResolvedValue({
-      success: true,
-      data: {
-        workingTree: {
-          staged: [
-            { path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 },
-          ],
-          unstaged: [
-            { path: 'unstaged1.ts', type: 'modified', additions: 3, deletions: 1 },
-          ],
-          untracked: [
-            { path: 'new.ts', type: 'added', additions: 10, deletions: 0 },
-          ],
-        },
-      },
+    const workingTree = {
+      staged: [{ path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 }],
+      unstaged: [{ path: 'unstaged1.ts', type: 'modified', additions: 3, deletions: 1 }],
+      untracked: [{ path: 'new.ts', type: 'added', additions: 10, deletions: 0 }],
+    };
+
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: '' } });
+      }
+      return Promise.resolve({ success: true, data: { diff: '', workingTree } });
     });
     (API.sessions.changeAllStage as any).mockResolvedValue({ success: true });
     (API.sessions.changeFileStage as any).mockResolvedValue({ success: true });
@@ -108,6 +105,72 @@ describe('RightPanel - Zed-style Changes list', () => {
     expect(untracked.checked).toBe(false);
   });
 
+  it('shows hunk review progress and per-file hunk counts', async () => {
+    const workingTree = {
+      staged: [{ path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 }],
+      unstaged: [{ path: 'unstaged1.ts', type: 'modified', additions: 3, deletions: 1 }],
+      untracked: [{ path: 'new.ts', type: 'added', additions: 10, deletions: 0 }],
+    };
+
+    const allDiff = [
+      'diff --git a/staged1.ts b/staged1.ts',
+      'index 1111111..2222222 100644',
+      '--- a/staged1.ts',
+      '+++ b/staged1.ts',
+      '@@ -1 +1 @@',
+      '-foo',
+      '+bar',
+      'diff --git a/unstaged1.ts b/unstaged1.ts',
+      'index 1111111..2222222 100644',
+      '--- a/unstaged1.ts',
+      '+++ b/unstaged1.ts',
+      '@@ -1,2 +1,2 @@',
+      '-a',
+      '+b',
+      '@@ -10,2 +10,2 @@',
+      '-c',
+      '+d',
+      'diff --git a/new.ts b/new.ts',
+      'new file mode 100644',
+      'index 0000000..1111111',
+      '--- /dev/null',
+      '+++ b/new.ts',
+      '@@ -0,0 +1,1 @@',
+      '+hello',
+      '',
+    ].join('\n');
+
+    const stagedDiff = [
+      'diff --git a/staged1.ts b/staged1.ts',
+      'index 1111111..2222222 100644',
+      '--- a/staged1.ts',
+      '+++ b/staged1.ts',
+      '@@ -1 +1 @@',
+      '-foo',
+      '+bar',
+      '',
+    ].join('\n');
+
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: stagedDiff } });
+      }
+      return Promise.resolve({ success: true, data: { diff: allDiff, workingTree } });
+    });
+
+    render(<RightPanel {...mockProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-panel-review-summary')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('1/4 hunks')).toBeInTheDocument();
+    expect(screen.getByText('(1/1 hunks)')).toBeInTheDocument();
+    expect(screen.getByText('(0/2 hunks)')).toBeInTheDocument();
+    expect(screen.getByText('(0/1 hunks)')).toBeInTheDocument();
+  });
+
   it('stages/unstages a file via checkbox', async () => {
     render(<RightPanel {...mockProps} />);
 
@@ -137,15 +200,17 @@ describe('RightPanel - Zed-style Changes list', () => {
   });
 
   it('unstages all via header controls', async () => {
-    (API.sessions.getDiff as any).mockResolvedValue({
-      success: true,
-      data: {
-        workingTree: {
-          staged: [{ path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 }],
-          unstaged: [],
-          untracked: [],
-        },
-      },
+    const workingTree = {
+      staged: [{ path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 }],
+      unstaged: [],
+      untracked: [],
+    };
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: '' } });
+      }
+      return Promise.resolve({ success: true, data: { diff: '', workingTree } });
     });
 
     render(<RightPanel {...mockProps} />);
@@ -177,9 +242,13 @@ describe('RightPanel - Zed-style Changes list', () => {
   });
 
   it('handles empty groups gracefully', async () => {
-    (API.sessions.getDiff as any).mockResolvedValue({
-      success: true,
-      data: { workingTree: { staged: [], unstaged: [], untracked: [] } },
+    const workingTree = { staged: [], unstaged: [], untracked: [] };
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: '' } });
+      }
+      return Promise.resolve({ success: true, data: { diff: '', workingTree } });
     });
 
     render(<RightPanel {...mockProps} />);
@@ -197,13 +266,16 @@ describe('RightPanel - Zed-style Changes list', () => {
       return () => {};
     });
 
-    let resolveDiff: ((value: any) => void) | null = null;
-    (API.sessions.getDiff as any).mockImplementation(
-      () =>
-        new Promise((r) => {
-          resolveDiff = r;
-        })
-    );
+    let resolveAllDiff: ((value: any) => void) | null = null;
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: '' } });
+      }
+      return new Promise((r) => {
+        resolveAllDiff = r;
+      });
+    });
 
     render(<RightPanel {...mockProps} />);
 
@@ -217,9 +289,10 @@ describe('RightPanel - Zed-style Changes list', () => {
     });
 
     await act(async () => {
-      resolveDiff?.({
+      resolveAllDiff?.({
         success: true,
         data: {
+          diff: '',
           workingTree: {
             staged: [{ path: 'staged1.ts', type: 'modified', additions: 5, deletions: 2 }],
             unstaged: [{ path: 'unstaged1.ts', type: 'modified', additions: 3, deletions: 1 }],
@@ -236,24 +309,24 @@ describe('RightPanel - Zed-style Changes list', () => {
   });
 
   it('sorts paths in a git-like (codepoint) order', async () => {
-    (API.sessions.getDiff as any).mockResolvedValue({
-      success: true,
-      data: {
-        workingTree: {
-          staged: [
-            { path: '_config.yml', type: 'modified', additions: 3, deletions: 2 },
-          ],
-          unstaged: [
-            { path: '.github/workflows/pages.yml', type: 'modified', additions: 11, deletions: 5 },
-            { path: 'package.json', type: 'modified', additions: 4, deletions: 1 },
-            { path: 'source/about/index.md', type: 'modified', additions: 3, deletions: 2 },
-          ],
-          untracked: [
-            { path: 'dd.txt', type: 'added', additions: 6, deletions: 0 },
-            { path: 'WORKTREE_TEST.md', type: 'added', additions: 29, deletions: 0 },
-          ],
-        },
-      },
+    const workingTree = {
+      staged: [{ path: '_config.yml', type: 'modified', additions: 3, deletions: 2 }],
+      unstaged: [
+        { path: '.github/workflows/pages.yml', type: 'modified', additions: 11, deletions: 5 },
+        { path: 'package.json', type: 'modified', additions: 4, deletions: 1 },
+        { path: 'source/about/index.md', type: 'modified', additions: 3, deletions: 2 },
+      ],
+      untracked: [
+        { path: 'dd.txt', type: 'added', additions: 6, deletions: 0 },
+        { path: 'WORKTREE_TEST.md', type: 'added', additions: 29, deletions: 0 },
+      ],
+    };
+    (API.sessions.getDiff as any).mockImplementation((_sessionId: string, target: any) => {
+      const scope = target?.kind === 'working' ? target?.scope : null;
+      if (scope === 'staged') {
+        return Promise.resolve({ success: true, data: { diff: '' } });
+      }
+      return Promise.resolve({ success: true, data: { diff: '', workingTree } });
     });
 
     const { container } = render(<RightPanel {...mockProps} />);

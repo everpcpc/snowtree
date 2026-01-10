@@ -4,7 +4,7 @@ import { useRightPanelData, type Commit } from '../useRightPanelData';
 import type { FileChange, RightPanelProps } from '../types';
 import type { DiffTarget } from '../../../types/diff';
 import { colors } from './constants';
-import { computeTrackedFiles, computeUntrackedFiles } from './utils';
+import { computeTrackedFiles, computeUntrackedFiles, countDiffHunksByPath, sumHunksByPath } from './utils';
 import { CommitList } from './CommitList';
 import { FileChangeList } from './FileChangeList';
 import type { WorkingTreeScope } from './types';
@@ -37,6 +37,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
     const {
       commits,
       workingTree,
+      workingTreeDiffs,
       commitFiles,
       selection,
       isLoading,
@@ -162,6 +163,20 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
       return [...tracked, ...untracked];
     }, [trackedList, untrackedList]);
 
+    const totalHunksByPath = useMemo(
+      () => countDiffHunksByPath(workingTreeDiffs.all),
+      [workingTreeDiffs.all]
+    );
+    const stagedHunksByPath = useMemo(
+      () => countDiffHunksByPath(workingTreeDiffs.staged),
+      [workingTreeDiffs.staged]
+    );
+    const totalHunks = useMemo(() => sumHunksByPath(totalHunksByPath), [totalHunksByPath]);
+    const stagedHunks = useMemo(
+      () => Math.min(sumHunksByPath(stagedHunksByPath), totalHunks),
+      [stagedHunksByPath, totalHunks]
+    );
+
     const totalChanges = isWorkingTreeSelected
       ? (workingTree?.staged.length || 0) +
         (workingTree?.unstaged.length || 0) +
@@ -181,6 +196,9 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
       (workingTree?.unstaged.length || 0) + (workingTree?.untracked.length || 0)
     );
     const canUnstageAll = Boolean(workingTree?.staged.length || 0);
+
+    const showHunkProgress = isWorkingTreeSelected && totalChanges > 0 && totalHunks > 0;
+    const progressRatio = showHunkProgress && totalHunks > 0 ? stagedHunks / totalHunks : 0;
 
     const handleCommitSelect = useCallback(
       (commit: Commit) => {
@@ -355,90 +373,120 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
 
         <div className="flex-1 flex flex-col min-h-0">
           <div
-            className="flex items-center justify-between px-3 py-2"
             style={{
               backgroundColor: colors.bg.secondary,
               borderBottom: `1px solid ${colors.border}`,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setIsChangesExpanded(!isChangesExpanded)}
-              className="flex items-center gap-1.5 text-xs font-medium transition-all duration-75 px-1.5 py-0.5 -ml-1.5 rounded st-hoverable st-focus-ring"
-              style={{ color: colors.text.secondary }}
-            >
-              <ChevronDown
-                className={`w-3 h-3 transition-transform ${isChangesExpanded ? '' : '-rotate-90'}`}
-                style={{ color: colors.text.muted }}
-              />
-              <span>Changes</span>
-              {totalChanges > 0 && (
-                <span
-                  className="ml-1 px-1.5 py-0.5 text-[10px] rounded font-mono"
-                  style={{
-                    backgroundColor: colors.bg.hover,
-                    color: colors.text.muted,
-                  }}
-                >
-                  {totalChanges}
-                </span>
-              )}
-            </button>
-            <div className="flex items-center gap-2">
-              {isWorkingTreeSelected && totalChanges > 0 && (
-                <div className="flex items-center gap-2">
-                  {canStageAll ? (
-                    <button
-                      type="button"
-                      data-testid="right-panel-stage-all"
-                      disabled={isDisabled}
-                      onClick={() => handleStageAll(true)}
-                      className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
-                      style={{
-                        color: colors.text.primary,
-                        backgroundColor: colors.bg.hover,
-                        border: `1px solid ${colors.border}`,
-                      }}
-                      title="Stage all"
-                    >
-                      Stage All
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      data-testid="right-panel-unstage-all"
-                      disabled={isDisabled || !canUnstageAll}
-                      onClick={() => handleStageAll(false)}
-                      className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
-                      style={{
-                        color: colors.text.primary,
-                        backgroundColor: colors.bg.hover,
-                        border: `1px solid ${colors.border}`,
-                      }}
-                      title="Unstage all"
-                    >
-                      Unstage All
-                    </button>
-                  )}
-                </div>
-              )}
-              {selectedCommit && (
-                <span
-                  className="text-[10px] font-mono truncate max-w-[100px]"
-                  style={{
-                    color:
-                      selectedCommit.id === 0
-                        ? colors.text.modified
-                        : colors.accent,
-                  }}
-                  title={selectedCommit.commit_message}
-                >
-                  {selectedCommit.id === 0
-                    ? ''
-                    : selectedCommit.after_commit_hash.substring(0, 7)}
-                </span>
-              )}
+            <div className="flex items-center justify-between px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setIsChangesExpanded(!isChangesExpanded)}
+                className="flex items-center gap-1.5 text-xs font-medium transition-all duration-75 px-1.5 py-0.5 -ml-1.5 rounded st-hoverable st-focus-ring"
+                style={{ color: colors.text.secondary }}
+              >
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform ${isChangesExpanded ? '' : '-rotate-90'}`}
+                  style={{ color: colors.text.muted }}
+                />
+                <span>Changes</span>
+                {totalChanges > 0 && (
+                  <span
+                    className="ml-1 px-1.5 py-0.5 text-[10px] rounded font-mono"
+                    style={{
+                      backgroundColor: colors.bg.hover,
+                      color: colors.text.muted,
+                    }}
+                  >
+                    {totalChanges}
+                  </span>
+                )}
+              </button>
+              <div className="flex items-center gap-2">
+                {isWorkingTreeSelected && totalChanges > 0 && (
+                  <div className="flex items-center gap-2">
+                    {canStageAll ? (
+                      <button
+                        type="button"
+                        data-testid="right-panel-stage-all"
+                        disabled={isDisabled}
+                        onClick={() => handleStageAll(true)}
+                        className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
+                        style={{
+                          color: colors.text.primary,
+                          backgroundColor: colors.bg.hover,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                        title="Stage all"
+                      >
+                        Stage All
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="right-panel-unstage-all"
+                        disabled={isDisabled || !canUnstageAll}
+                        onClick={() => handleStageAll(false)}
+                        className="px-2.5 py-1 rounded text-[10px] font-medium transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
+                        style={{
+                          color: colors.text.primary,
+                          backgroundColor: colors.bg.hover,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                        title="Unstage all"
+                      >
+                        Unstage All
+                      </button>
+                    )}
+                  </div>
+                )}
+                {selectedCommit && (
+                  <span
+                    className="text-[10px] font-mono truncate max-w-[100px]"
+                    style={{
+                      color:
+                        selectedCommit.id === 0
+                          ? colors.text.modified
+                          : colors.accent,
+                    }}
+                    title={selectedCommit.commit_message}
+                  >
+                    {selectedCommit.id === 0
+                      ? ''
+                      : selectedCommit.after_commit_hash.substring(0, 7)}
+                  </span>
+                )}
+              </div>
             </div>
+
+            {showHunkProgress && (
+              <div
+                className="flex items-center justify-between px-3 pb-2 -mt-1 gap-2"
+                data-testid="right-panel-review-summary"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px]" style={{ color: colors.text.muted }}>
+                    Review:
+                  </span>
+                  <span className="text-[10px] font-mono" style={{ color: colors.text.secondary }}>
+                    {stagedHunks}/{totalHunks} hunks
+                  </span>
+                  <div
+                    className="h-1.5 w-24 rounded overflow-hidden flex-shrink-0"
+                    style={{ backgroundColor: colors.bg.hover }}
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${Math.round(progressRatio * 100)}%`,
+                        backgroundColor: colors.accent,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div
@@ -457,6 +505,11 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
               selectedFileScope={selectedFileScope}
               isDisabled={isDisabled}
               workingFilesForDiffOverlay={workingFilesForDiffOverlay}
+              hunkCounts={
+                showHunkProgress
+                  ? { totalByPath: totalHunksByPath, stagedByPath: stagedHunksByPath }
+                  : undefined
+              }
               onRefresh={refresh}
               onStageFile={handleStageFile}
               onWorkingFileClick={handleWorkingFileClick}

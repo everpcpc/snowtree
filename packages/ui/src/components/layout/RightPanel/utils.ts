@@ -6,6 +6,8 @@ import type { CommitData } from './types';
 export const compareGitPaths = (a: string, b: string): number =>
   a === b ? 0 : a < b ? -1 : 1;
 
+export type HunksByPath = Record<string, number>;
+
 export const getTypeInfo = (type: FileChange['type']) => {
   const key = type as FileType;
   return FILE_TYPE_INFO[key] || FILE_TYPE_INFO.modified;
@@ -15,6 +17,30 @@ export interface WorkingTree {
   staged: FileChange[];
   unstaged: FileChange[];
   untracked: FileChange[];
+}
+
+export function countDiffHunksByPath(diffText: string | null | undefined): HunksByPath {
+  if (!diffText) return {};
+
+  const result: HunksByPath = {};
+  const fileMatches = diffText.match(/diff --git[\s\S]*?(?=diff --git|$)/g);
+  if (!fileMatches) return result;
+
+  for (const fileContent of fileMatches) {
+    const fileNameMatch = fileContent.match(/diff --git a\/(.*?) b\/(.*?)(?:\n|$)/);
+    if (!fileNameMatch) continue;
+    const path = fileNameMatch[2] || fileNameMatch[1] || '';
+    if (!path) continue;
+
+    const hunks = (fileContent.match(/^@@/gm) || []).length;
+    result[path] = (result[path] || 0) + hunks;
+  }
+
+  return result;
+}
+
+export function sumHunksByPath(hunksByPath: HunksByPath): number {
+  return Object.values(hunksByPath).reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0);
 }
 
 export function computeTrackedFiles(

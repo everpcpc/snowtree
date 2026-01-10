@@ -27,17 +27,29 @@ Round N: Done → Commit → Push PR
 
 ## Install
 
+Recommended (one-line installer, macOS/Linux):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bohutang/snowtree/main/install.sh | sh
 ```
 
-Or [download releases](https://github.com/bohutang/snowtree/releases): macOS `.dmg` / Linux `.deb` `.AppImage`
+Manual install: https://github.com/bohutang/snowtree/releases
 
-## Build
+- macOS: `.dmg` (`arm64`, `x64`)
+- Linux: `.deb` / `.AppImage` (`x86_64`)
+- Windows: not available yet
+
+## Development
 
 ```bash
-make install && make run
+make install
+make run
 ```
+
+Common commands:
+
+- Typecheck/lint/tests: `make check`
+- Build packages: `make build`
 
 ## License
 

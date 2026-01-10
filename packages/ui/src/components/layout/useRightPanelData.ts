@@ -21,6 +21,11 @@ export interface WorkingTree {
   untracked: FileChange[];
 }
 
+export interface WorkingTreeDiffs {
+  all: string;
+  staged: string;
+}
+
 export type Selection =
   | { kind: 'working' }
   | { kind: 'commit'; hash: string }
@@ -29,6 +34,7 @@ export type Selection =
 export interface RightPanelData {
   commits: Commit[];
   workingTree: WorkingTree | null;
+  workingTreeDiffs: WorkingTreeDiffs;
   commitFiles: FileChange[];
   selection: Selection;
   isLoading: boolean;
@@ -93,6 +99,10 @@ function parseDiffToFiles(diffText: string): FileChange[] {
 export function useRightPanelData(sessionId: string | undefined): RightPanelData {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [workingTree, setWorkingTree] = useState<WorkingTree | null>(null);
+  const [workingTreeDiffs, setWorkingTreeDiffs] = useState<WorkingTreeDiffs>({
+    all: '',
+    staged: '',
+  });
   const [commitFiles, setCommitFiles] = useState<FileChange[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -130,19 +140,48 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     throw new Error(response.error || 'Failed to load commits');
   }, [sessionId]);
 
-  const fetchWorkingTree = useCallback(async (signal: AbortSignal): Promise<WorkingTree> => {
-    if (!sessionId) return { staged: [], unstaged: [], untracked: [] };
+  const fetchWorkingTreeSnapshot = useCallback(async (signal: AbortSignal): Promise<{ workingTree: WorkingTree; diffs: WorkingTreeDiffs }> => {
+    const empty = { staged: [], unstaged: [], untracked: [] } satisfies WorkingTree;
+    if (!sessionId) return { workingTree: empty, diffs: { all: '', staged: '' } };
+
     const response = await withTimeout(
-      API.sessions.getDiff(sessionId, { kind: 'working', scope: 'all' }),
+      API.sessions.getDiff(sessionId, { kind: 'working', scope: 'all' } as any),
       REQUEST_TIMEOUT,
       'Load working tree'
     );
-    if (signal.aborted) return { staged: [], unstaged: [], untracked: [] };
-    if (response.success && response.data) {
-      const wt = (response.data as { workingTree?: WorkingTree }).workingTree;
-      return wt || { staged: [], unstaged: [], untracked: [] };
+
+    if (signal.aborted) return { workingTree: empty, diffs: { all: '', staged: '' } };
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to load working tree');
     }
-    throw new Error(response.error || 'Failed to load working tree');
+
+    const data = response.data as { workingTree?: WorkingTree; diff?: unknown };
+    const workingTree = data.workingTree || empty;
+    const diffs: WorkingTreeDiffs = {
+      all: typeof data.diff === 'string' ? data.diff : '',
+      staged: '',
+    };
+
+    // Best-effort staged diff for hunk progress (do not fail the panel if this request fails).
+    const hasStagedFiles = (workingTree.staged?.length || 0) > 0;
+    if (hasStagedFiles) {
+      try {
+        const stagedRes = await withTimeout(
+          API.sessions.getDiff(sessionId, { kind: 'working', scope: 'staged' } as any),
+          REQUEST_TIMEOUT,
+          'Load staged diff'
+        );
+        if (!signal.aborted && stagedRes.success && stagedRes.data) {
+          const stagedData = stagedRes.data as { diff?: unknown };
+          diffs.staged = typeof stagedData.diff === 'string' ? stagedData.diff : '';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return { workingTree, diffs };
   }, [sessionId]);
 
   const fetchCommitFiles = useCallback(async (hash: string, signal: AbortSignal): Promise<FileChange[]> => {
@@ -184,15 +223,16 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     setError(null);
 
     try {
-      const [newCommits, newWorkingTree] = await Promise.all([
+      const [newCommits, newSnapshot] = await Promise.all([
         fetchCommits(controller.signal),
-        fetchWorkingTree(controller.signal),
+        fetchWorkingTreeSnapshot(controller.signal),
       ]);
 
       if (controller.signal.aborted) return;
 
       setCommits(newCommits);
-      setWorkingTree(newWorkingTree);
+      setWorkingTree(newSnapshot.workingTree);
+      setWorkingTreeDiffs(newSnapshot.diffs);
 
       const hasUncommitted = newCommits.some((c) => c.id === 0);
       if (selectFirst) {
@@ -224,7 +264,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
         if (showLoading) setIsLoading(false);
       }
     }
-  }, [sessionId, cancelPending, fetchCommits, fetchWorkingTree, fetchCommitFiles]);
+  }, [sessionId, cancelPending, fetchCommits, fetchWorkingTreeSnapshot, fetchCommitFiles]);
 
   const refresh = useCallback(() => {
     void loadAll(false, { showLoading: true });
@@ -254,6 +294,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     if (!sessionId) {
       setCommits([]);
       setWorkingTree(null);
+      setWorkingTreeDiffs({ all: '', staged: '' });
       setCommitFiles([]);
       setSelection(null);
       setError(null);
@@ -352,14 +393,15 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     try {
       await API.sessions.changeAllStage(sessionId, { stage });
       const controller = new AbortController();
-      const newWorkingTree = await fetchWorkingTree(controller.signal);
-      setWorkingTree(newWorkingTree);
+      const snapshot = await fetchWorkingTreeSnapshot(controller.signal);
+      setWorkingTree(snapshot.workingTree);
+      setWorkingTreeDiffs(snapshot.diffs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to stage files');
     } finally {
       setIsMutating(false);
     }
-  }, [sessionId, isMutating, fetchWorkingTree]);
+  }, [sessionId, isMutating, fetchWorkingTreeSnapshot]);
 
   const stageFile = useCallback(async (filePath: string, stage: boolean) => {
     if (!sessionId || isMutating) return;
@@ -368,18 +410,20 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     try {
       await API.sessions.changeFileStage(sessionId, { filePath, stage });
       const controller = new AbortController();
-      const newWorkingTree = await fetchWorkingTree(controller.signal);
-      setWorkingTree(newWorkingTree);
+      const snapshot = await fetchWorkingTreeSnapshot(controller.signal);
+      setWorkingTree(snapshot.workingTree);
+      setWorkingTreeDiffs(snapshot.diffs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to stage file');
     } finally {
       setIsMutating(false);
     }
-  }, [sessionId, isMutating, fetchWorkingTree]);
+  }, [sessionId, isMutating, fetchWorkingTreeSnapshot]);
 
   return {
     commits,
     workingTree,
+    workingTreeDiffs,
     commitFiles,
     selection,
     isLoading,

@@ -5,7 +5,7 @@ import { TriStateCheckbox } from './TriStateCheckbox';
 import type { WorkingFileRowProps } from './types';
 
 export const WorkingFileRow: React.FC<WorkingFileRowProps> = React.memo(
-  ({ file, stageState, onToggleStage, onClick, isSelected, disabled, testId }) => {
+  ({ file, stageState, onToggleStage, onClick, isSelected, disabled, hunkText, testId }) => {
     const [isHovered, setIsHovered] = useState(false);
     const typeInfo = getTypeInfo(file.type);
     const bg = isSelected
@@ -59,6 +59,15 @@ export const WorkingFileRow: React.FC<WorkingFileRowProps> = React.memo(
           )}
           {file.deletions > 0 && (
             <span style={{ color: colors.text.deleted }}>-{file.deletions}</span>
+          )}
+          {hunkText && (
+            <span
+              className="whitespace-nowrap"
+              style={{ color: colors.text.muted }}
+              title="Staged hunks / total hunks"
+            >
+              {hunkText}
+            </span>
           )}
         </div>
       </button>

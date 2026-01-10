@@ -21,6 +21,10 @@ export interface FileChangeListProps {
   selectedFileScope: WorkingTreeScope | 'commit' | null;
   isDisabled: boolean;
   workingFilesForDiffOverlay: FileChange[];
+  hunkCounts?: {
+    totalByPath: Record<string, number>;
+    stagedByPath: Record<string, number>;
+  };
   onRefresh: () => void;
   onStageFile: (filePath: string, stage: boolean) => void;
   onWorkingFileClick: (
@@ -45,6 +49,7 @@ export const FileChangeList: React.FC<FileChangeListProps> = React.memo(
     selectedFileScope,
     isDisabled,
     workingFilesForDiffOverlay,
+    hunkCounts,
     onRefresh,
     onStageFile,
     onWorkingFileClick,
@@ -140,6 +145,12 @@ export const FileChangeList: React.FC<FileChangeListProps> = React.memo(
                     isSelected={
                       selectedFile === file.path && selectedFileScope === 'all'
                     }
+                    hunkText={(() => {
+                      const total = hunkCounts?.totalByPath[file.path] || 0;
+                      if (total <= 0) return undefined;
+                      const staged = hunkCounts?.stagedByPath[file.path] || 0;
+                      return `(${staged}/${total} hunks)`;
+                    })()}
                     testId={`right-panel-file-tracked-${file.path}`}
                   />
                 ))}
@@ -176,6 +187,12 @@ export const FileChangeList: React.FC<FileChangeListProps> = React.memo(
                       selectedFile === file.path &&
                       selectedFileScope === 'untracked'
                     }
+                    hunkText={(() => {
+                      const total = hunkCounts?.totalByPath[file.path] || 0;
+                      if (total <= 0) return undefined;
+                      const staged = hunkCounts?.stagedByPath[file.path] || 0;
+                      return `(${staged}/${total} hunks)`;
+                    })()}
                     testId={`right-panel-file-untracked-${file.path}`}
                   />
                 ))}

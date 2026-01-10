@@ -4,7 +4,7 @@ import { getTypeInfo } from './utils';
 import type { FileItemProps } from './types';
 
 export const FileItem: React.FC<FileItemProps> = React.memo(
-  ({ file, onClick, isSelected, hideStats, testId }) => {
+  ({ file, onClick, isSelected, hideStats, hunkText, testId }) => {
     const [isHovered, setIsHovered] = useState(false);
     const typeInfo = getTypeInfo(file.type);
     const bg = isSelected
@@ -54,6 +54,15 @@ export const FileItem: React.FC<FileItemProps> = React.memo(
             )}
             {file.deletions > 0 && (
               <span style={{ color: colors.text.deleted }}>-{file.deletions}</span>
+            )}
+            {hunkText && (
+              <span
+                className="whitespace-nowrap"
+                style={{ color: colors.text.muted }}
+                title="Hunks"
+              >
+                {hunkText}
+              </span>
             )}
           </div>
         )}

@@ -17,6 +17,7 @@ export interface FileItemProps {
   onClick: () => void;
   isSelected: boolean;
   hideStats?: boolean;
+  hunkText?: string;
   testId?: string;
 }
 
@@ -27,6 +28,7 @@ export interface WorkingFileRowProps {
   onClick: () => void;
   isSelected: boolean;
   disabled?: boolean;
+  hunkText?: string;
   testId?: string;
 }
 
