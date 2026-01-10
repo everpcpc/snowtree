@@ -79,18 +79,18 @@ export class GitStagingManager {
    */
   async stageLines(options: StageLinesOptions): Promise<StageLinesResult> {
     try {
-      console.log('[GitStagingManager] stageLines called:', options);
+      console.debug('[GitStagingManager] stageLines called:', options);
 
       // 1. Get full diff for the file
       const scope = options.isStaging ? 'unstaged' : 'staged';
-      console.log('[GitStagingManager] Getting diff for scope:', scope);
+      console.debug('[GitStagingManager] Getting diff for scope:', scope);
       const fullDiff = await this.getFileDiff(
         options.worktreePath,
         options.filePath,
         scope,
         options.sessionId
       );
-      console.log('[GitStagingManager] Got diff, length:', fullDiff.length);
+      console.debug('[GitStagingManager] Got diff, length:', fullDiff.length);
 
       // Check for binary files
       if (fullDiff.includes('Binary files differ')) {
@@ -102,7 +102,7 @@ export class GitStagingManager {
 
       // 2. Parse into hunks
       const hunks = this.parseDiffIntoHunks(fullDiff);
-      console.log('[GitStagingManager] Parsed hunks:', hunks.length);
+      console.debug('[GitStagingManager] Parsed hunks:', hunks.length);
 
       if (hunks.length === 0) {
         return {
@@ -113,7 +113,7 @@ export class GitStagingManager {
 
       // 3. Find hunk containing target line
       const targetHunk = this.findHunkContainingLine(hunks, options.targetLine);
-      console.log('[GitStagingManager] Found target hunk:', !!targetHunk);
+      console.debug('[GitStagingManager] Found target hunk:', !!targetHunk);
       if (!targetHunk) {
         return {
           success: false,
@@ -128,7 +128,7 @@ export class GitStagingManager {
         options.isStaging,
         options.filePath
       );
-      console.log('[GitStagingManager] Generated patch:\n', patch);
+      console.debug('[GitStagingManager] Generated patch:\n', patch);
 
       // 5. Apply patch
       return await this.applyPatch(

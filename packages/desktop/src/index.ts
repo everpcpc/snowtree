@@ -580,6 +580,14 @@ async function initializeServices() {
   configManager = new ConfigManager();
   await configManager.initialize();
 
+  // Initialize auto-updater in production so IPC handlers can use it.
+  // (UI triggers download/install via IPC, so updateManager must exist before handlers register.)
+  if (!isDevelopment) {
+    updateManager = new UpdateManager();
+    await updateManager.initialize();
+    console.log('[Main] UpdateManager initialized');
+  }
+
   // Initialize logger early so it can capture all logs
   logger = new Logger(configManager);
   console.log('[Main] Logger initialized');
@@ -748,13 +756,8 @@ app.whenReady().then(async () => {
   await createWindow();
   console.log('[Main] Window created successfully');
 
-  // Initialize auto-updater in production only
-  if (!isDevelopment) {
-    updateManager = new UpdateManager();
-    await updateManager.initialize();
-    console.log('[Main] UpdateManager initialized');
-
-    // Forward update events to renderer
+  // Forward update events to renderer (production only; updateManager is created in initializeServices).
+  if (updateManager) {
     updateManager.on('update-available', (version: string) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update:available', version);

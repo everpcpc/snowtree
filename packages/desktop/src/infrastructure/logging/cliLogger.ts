@@ -69,7 +69,8 @@ function truncate(str: string, max: number = 100): string {
 export class CliLogger {
   private static instance: CliLogger;
   private requestTimes: Map<string, number> = new Map();
-  private enabled: boolean = true;
+  private enabled: boolean =
+    process.argv.includes('--snowtree-dev') || process.env.SNOWTREE_CLI_LOG === '1';
 
   static getInstance(): CliLogger {
     if (!CliLogger.instance) {

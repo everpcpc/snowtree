@@ -64,7 +64,7 @@ export class GitStatusLogger {
 
   // 4. Window Focus Events
   logFocusChange(focused: boolean): void {
-    this.logger?.info(`[GitStatus] Polling ${focused ? 'resumed' : 'paused'} (window ${focused ? 'focused' : 'blurred'})`);
+    this.logger?.verbose(`[GitStatus] Polling ${focused ? 'resumed' : 'paused'} (window ${focused ? 'focused' : 'blurred'})`);
   }
 
   // 5. Summary Statistics

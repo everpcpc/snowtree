@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { GitBranch, ExternalLink, Download } from 'lucide-react';
+import React from 'react';
+import { GitBranch, ExternalLink } from 'lucide-react';
 import type { WorkspaceHeaderProps } from './types';
 
 const StatusDot: React.FC<{ status: string }> = React.memo(({ status }) => {
@@ -34,38 +34,6 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = React.memo(({
   session,
   branchName
 }) => {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updateVersion, setUpdateVersion] = useState('');
-  const [downloading, setDownloading] = useState(false);
-
-  useEffect(() => {
-    if (!window.electronAPI?.events) return;
-
-    const unsubscribes = [
-      window.electronAPI.events.onUpdateAvailable((version) => {
-        setUpdateAvailable(true);
-        setUpdateVersion(version);
-      }),
-
-      window.electronAPI.events.onUpdateDownloaded(() => {
-        setDownloading(false);
-        const shouldRestart = confirm(
-          `Update ${updateVersion} downloaded. Restart now to complete installation?`
-        );
-        if (shouldRestart) {
-          window.electronAPI.updater.install();
-        }
-      }),
-    ];
-
-    return () => unsubscribes.forEach(u => u());
-  }, [updateVersion]);
-
-  const handleDownload = async () => {
-    setDownloading(true);
-    await window.electronAPI.updater.download();
-  };
-
   const handleOpenInFinder = async () => {
     if (session.worktreePath) {
       await window.electronAPI?.invoke('shell:openPath', session.worktreePath);
@@ -106,20 +74,6 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = React.memo(({
       </div>
 
       <div className="flex items-center gap-1" style={{ ['WebkitAppRegion' as never]: 'no-drag' }}>
-        {updateAvailable && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="p-1.5 rounded st-hoverable st-focus-ring"
-            title={`Update to ${updateVersion}`}
-          >
-            <Download
-              className="w-3.5 h-3.5"
-              style={{ color: downloading ? 'var(--st-text-faint)' : 'var(--st-primary)' }}
-            />
-          </button>
-        )}
         <button
           type="button"
           onClick={handleOpenInFinder}

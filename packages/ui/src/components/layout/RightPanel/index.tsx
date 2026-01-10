@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { RefreshCw, ChevronDown, GitCommit, GitPullRequest } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { RefreshCw, ChevronDown, GitCommit, GitPullRequest, Download, RotateCw } from 'lucide-react';
 import { useRightPanelData, type Commit } from '../useRightPanelData';
 import type { FileChange, RightPanelProps } from '../types';
 import type { DiffTarget } from '../../../types/diff';
@@ -19,6 +19,13 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
     onPushPR,
     isPushPRDisabled,
   }) => {
+    const [appVersion, setAppVersion] = useState<string>('');
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [updateVersion, setUpdateVersion] = useState<string>('');
+    const [updateDownloading, setUpdateDownloading] = useState(false);
+    const [updateDownloaded, setUpdateDownloaded] = useState(false);
+    const [updateError, setUpdateError] = useState<string>('');
+
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [selectedFileScope, setSelectedFileScope] = useState<
       WorkingTreeScope | 'commit' | null
@@ -40,6 +47,83 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
       stageAll,
       stageFile,
     } = useRightPanelData(session.id);
+
+    useEffect(() => {
+      let mounted = true;
+
+      (async () => {
+        if (!window.electronAPI?.invoke) return;
+        try {
+          const version = await window.electronAPI.invoke('get-app-version');
+          if (!mounted) return;
+          if (typeof version === 'string') setAppVersion(version);
+        } catch {
+          // ignore
+        }
+      })();
+
+      const events = window.electronAPI?.events;
+      if (
+        !events ||
+        typeof events.onUpdateAvailable !== 'function' ||
+        typeof events.onUpdateDownloaded !== 'function'
+      ) {
+        return () => {
+          mounted = false;
+        };
+      }
+
+      const unsubscribes = [
+        events.onUpdateAvailable((version) => {
+          setUpdateAvailable(true);
+          setUpdateVersion(version);
+          setUpdateDownloaded(false);
+          setUpdateError('');
+        }),
+        events.onUpdateDownloaded(() => {
+          setUpdateDownloading(false);
+          setUpdateDownloaded(true);
+        }),
+      ];
+
+      return () => {
+        mounted = false;
+        unsubscribes.forEach((u) => u());
+      };
+    }, [session.id]);
+
+    const handleDownloadUpdate = useCallback(async () => {
+      if (!window.electronAPI?.updater) return;
+      setUpdateDownloading(true);
+      setUpdateError('');
+      try {
+        const res = await window.electronAPI.updater.download();
+        if (!res?.success) {
+          setUpdateDownloading(false);
+          setUpdateError(res?.error || 'Failed to download update');
+        }
+      } catch (e) {
+        setUpdateDownloading(false);
+        setUpdateError(e instanceof Error ? e.message : String(e));
+      }
+    }, []);
+
+    const handleInstallUpdate = useCallback(async () => {
+      if (!window.electronAPI?.updater) return;
+      try {
+        await window.electronAPI.updater.install();
+      } catch {
+        // ignore
+      }
+    }, []);
+
+    const handleOpenReleases = useCallback(async () => {
+      try {
+        await window.electronAPI?.invoke?.('shell:openExternal', 'https://github.com/bohutang/snowtree/releases');
+      } catch {
+        // ignore
+      }
+    }, []);
 
     const isWorkingTreeSelected = selection?.kind === 'working';
     const selectedCommitHash =
@@ -366,6 +450,64 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
               hasSelection={Boolean(selectedTarget)}
             />
           </div>
+        </div>
+
+        <div
+          className="flex-shrink-0 px-3 py-2"
+          style={{
+            borderTop: `1px solid ${colors.border}`,
+            backgroundColor: colors.bg.secondary,
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            {updateAvailable && (
+              <div className="flex items-center gap-1.5">
+                {!updateDownloaded ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadUpdate}
+                    disabled={updateDownloading}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
+                    style={{ color: colors.accent }}
+                    title={`Download update v${updateVersion}`}
+                  >
+                    {updateDownloading ? (
+                      <RotateCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Download className="w-3 h-3" />
+                    )}
+                    Update
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleInstallUpdate}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all duration-75 st-hoverable st-focus-ring"
+                    style={{ color: colors.accent }}
+                    title={`Restart to install v${updateVersion}`}
+                  >
+                    Restart
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleOpenReleases}
+              className="ml-auto text-[10px] font-mono truncate st-hoverable st-focus-ring px-1.5 py-0.5 rounded"
+              style={{ color: colors.text.muted }}
+              title="Open GitHub Releases"
+            >
+              {appVersion ? `snowtree v${appVersion}` : 'snowtree'}
+            </button>
+          </div>
+
+          {updateError && (
+            <div className="mt-1 text-[10px] leading-snug" style={{ color: colors.text.muted }}>
+              {updateError}
+            </div>
+          )}
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import type { ConfigManager } from '../../features/worktree/configManager';
+import type { ConfigManager } from '../config/configManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSnowtreeSubdirectory } from '../utils/snowtreeDirectory';
@@ -31,6 +31,64 @@ export class Logger {
     
     this.currentLogFile = this.getCurrentLogFileName();
     this.initializeLogger();
+  }
+
+  private isVerboseEnabled(): boolean {
+    return this.configManager.isVerbose() || process.env.SNOWTREE_LOG_VERBOSE === '1';
+  }
+
+  private isNoisyInfoMessage(message: string): boolean {
+    const trimmed = message.trimStart();
+
+    // Database debug logs are extremely high volume and rarely actionable in production.
+    if (trimmed.startsWith('[Database]')) {
+      // Keep one-time migration-related messages.
+      const lower = trimmed.toLowerCase();
+      if (lower.includes('migration') || lower.includes('migrate') || lower.includes('schema')) return false;
+      return true;
+    }
+    if (trimmed.startsWith('[DB-DEBUG]')) return true;
+
+    // PATH detection logs are very verbose; enable via SNOWTREE_LOG_VERBOSE=1 when debugging.
+    if (trimmed.startsWith('[ShellPath]')) return true;
+
+    // Staging debug logs include patches/diffs; keep out of default logs.
+    if (trimmed.startsWith('[GitStagingManager]')) return true;
+
+    // Git status polling is continuous; keep only warnings/errors by default.
+    if (trimmed.startsWith('[GitStatus]')) {
+      const lower = trimmed.toLowerCase();
+      if (lower.includes('polling paused') || lower.includes('polling resumed')) return true;
+      if (lower.includes('setactivesession')) return true;
+      if (lower.includes('startwatchingsession')) return true;
+      if (lower.includes('started file watching')) return true;
+      if (lower.includes('stopped file watching')) return true;
+      if (lower.includes('got session for')) return true;
+      return false;
+    }
+
+    // CLI process tracing is useful only when debugging tool integration.
+    if (trimmed.includes(' REQUEST') || trimmed.includes(' COMPLETE')) return true;
+
+    // Frontend git status spam.
+    if (trimmed.startsWith('Git status updated:')) return true;
+    if (trimmed.startsWith('Polling git status for')) return true;
+    if (trimmed.startsWith('Using cached status for')) return true;
+
+    return false;
+  }
+
+  private shouldLog(level: string, message: string): { toConsole: boolean; toFile: boolean } {
+    if (level === 'ERROR' || level === 'WARN') return { toConsole: true, toFile: true };
+    if (level === 'VERBOSE' || level === 'DEBUG') {
+      const enabled = this.isVerboseEnabled();
+      return { toConsole: enabled, toFile: enabled };
+    }
+
+    // INFO
+    if (this.isVerboseEnabled()) return { toConsole: true, toFile: true };
+    const noisy = this.isNoisyInfoMessage(message);
+    return { toConsole: !noisy, toFile: !noisy };
   }
 
   private initializeLogger() {
@@ -215,11 +273,12 @@ export class Logger {
     const timestamp = formatForDatabase();
     const errorInfo = error ? ` Error: ${error.message}\nStack: ${error.stack}` : '';
     const fullMessage = `[${timestamp}] ${level}: ${message}${errorInfo}`;
+    const { toConsole, toFile } = this.shouldLog(level, message);
     
     // Try to log to console, but handle EPIPE errors gracefully
     try {
       // Always log to console using the original console method to avoid recursion
-      this.originalConsole.log(fullMessage);
+      if (toConsole) this.originalConsole.log(fullMessage);
     } catch (consoleError: unknown) {
       // If console logging fails (e.g., EPIPE), just write to file
       if ((consoleError as NodeJS.ErrnoException)?.code !== 'EPIPE' && !this.isInErrorHandler) {
@@ -241,13 +300,13 @@ export class Logger {
     }
     
     // Also write to file (unless we're in error handler to prevent recursion)
-    if (!this.isInErrorHandler) {
+    if (!this.isInErrorHandler && toFile) {
       this.writeToFile(fullMessage);
     }
   }
 
   verbose(message: string) {
-    if (this.configManager.isVerbose()) {
+    if (this.isVerboseEnabled()) {
       this.log('VERBOSE', message);
     }
   }
