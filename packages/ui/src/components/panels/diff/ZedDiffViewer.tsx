@@ -372,10 +372,48 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hscrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const hscrollLeftRef = useRef(0);
+  const hscrollSyncingRef = useRef(false);
   const [currentHunkIdx, setCurrentHunkIdx] = useState(0);
   const [focusedHunkKey, setFocusedHunkKey] = useState<string | null>(null);
   const [focusedHunkSig, setFocusedHunkSig] = useState<{ filePath: string; sig: string; oldStart: number; newStart: number } | null>(null);
   const [hoveredHunkKey, setHoveredHunkKey] = useState<string | null>(null);
+
+  const syncAllHScrollers = useCallback((left: number, sourceFilePath?: string) => {
+    hscrollLeftRef.current = left;
+    if (hscrollSyncingRef.current) return;
+    hscrollSyncingRef.current = true;
+    try {
+      for (const [path, el] of hscrollRefs.current.entries()) {
+        if (sourceFilePath && path === sourceFilePath) continue;
+        if (Math.abs(el.scrollLeft - left) > 0.5) el.scrollLeft = left;
+      }
+    } finally {
+      // Release on next frame to avoid feedback loops.
+      requestAnimationFrame(() => {
+        hscrollSyncingRef.current = false;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    if (!root) return;
+
+    // Make horizontal scrolling feel global (Zed-like): horizontal wheel gestures anywhere in the diff
+    // scroll the code, while gutters and headers remain fixed.
+    const onWheel = (e: WheelEvent) => {
+      if (!e.deltaX) return;
+      // Prevent the browser from attempting to scroll the outer container horizontally.
+      e.preventDefault();
+      const next = Math.max(0, hscrollLeftRef.current + e.deltaX);
+      syncAllHScrollers(next);
+    };
+
+    root.addEventListener('wheel', onWheel, { passive: false });
+    return () => root.removeEventListener('wheel', onWheel as any);
+  }, [syncAllHScrollers]);
 
   const allHunks = useMemo(() => {
     const result: Array<{ filePath: string; hunkKey: string; sig: string; oldStart: number; newStart: number; hunkHeader: string; isStaged: boolean; isUntracked: boolean }> = [];
@@ -648,9 +686,9 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
         } as React.CSSProperties
       }
     >
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto" data-testid="diff-scroll-container">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="diff-scroll-container">
         {files.map((file) => (
-          <div key={file.path} data-testid="diff-file" data-diff-file-path={file.path}>
+          <div key={file.path} data-testid="diff-file" data-diff-file-path={file.path} className="st-diff-file">
             <div
               data-testid="diff-file-header"
               ref={(el) => {
@@ -669,17 +707,36 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
               {file.path}
             </div>
 
-            <Diff
-              viewType="unified"
-              diffType={file.diffType}
-              hunks={file.hunks}
-              className="st-diff-table"
-              widgets={Object.fromEntries(
-                file.hunks
-                  .map((hunk) => {
-                    const changes = hunk.changes as ChangeData[];
-                    const first = changes[0];
-                    if (!first) return null;
+            <div className="st-diff-file-body">
+              <div
+                data-testid="diff-hscroll-container"
+                className="st-diff-hscroll"
+                ref={(el) => {
+                  if (!el) {
+                    hscrollRefs.current.delete(file.path);
+                    return;
+                  }
+                  hscrollRefs.current.set(file.path, el);
+                  // Keep newly mounted scrollers aligned with current horizontal position.
+                  if (Math.abs(el.scrollLeft - hscrollLeftRef.current) > 0.5) el.scrollLeft = hscrollLeftRef.current;
+                }}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  if (hscrollSyncingRef.current) return;
+                  syncAllHScrollers(el.scrollLeft, file.path);
+                }}
+              >
+              <Diff
+                viewType="unified"
+                diffType={file.diffType}
+                hunks={file.hunks}
+                className="st-diff-table"
+                widgets={Object.fromEntries(
+                  file.hunks
+                    .map((hunk) => {
+                      const changes = hunk.changes as ChangeData[];
+                      const first = changes[0];
+                      if (!first) return null;
 
                     const sig = (hunk as any).__st_hunkSig as string;
                     const hasEdits = Boolean(sig && sig.length > 0);
@@ -797,13 +854,15 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                       </div>
                     );
 
-                    return [changeKey, element] as const;
-                  })
-                  .filter((e): e is readonly [string, React.ReactElement | null] => e !== null)
-              ) as Record<string, React.ReactElement | null>}
-            >
-              {(hunks) => hunks.map((hunk) => <Hunk key={(hunk as any).__st_hunkKey as string} hunk={hunk} />)}
-            </Diff>
+                      return [changeKey, element] as const;
+                    })
+                    .filter((e): e is readonly [string, React.ReactElement | null] => e !== null)
+                ) as Record<string, React.ReactElement | null>}
+              >
+                {(hunks) => hunks.map((hunk) => <Hunk key={(hunk as any).__st_hunkKey as string} hunk={hunk} />)}
+              </Diff>
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -823,11 +882,19 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
           .st-diff-file-header {
             position: sticky;
             left: 0;
+            right: 0;
             z-index: 20;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            width: 100%;
+            min-width: 0;
           }
+
+          /* Ensure headers are sized to the viewport, not to the max-content table width. */
+          .st-diff-file { width: 100%; }
+          .st-diff-file-body { width: 100%; }
+          .st-diff-hscroll { overflow-x: auto; overflow-y: visible; width: 100%; }
 
           .st-diff-table.diff { table-layout: auto; border-collapse: separate; border-spacing: 0; }
           .st-diff-table .diff-line { font-size: 12px; line-height: 20px; }

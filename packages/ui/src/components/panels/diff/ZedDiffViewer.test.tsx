@@ -278,7 +278,11 @@ index 1234567..abcdefg 100644
     const css = container.querySelector('style')?.textContent || '';
     expect(css).toContain('.st-diff-table.diff-unified tr.diff-line > td.diff-gutter:nth-child(1)');
     expect(css).toContain('position: sticky');
+    expect(css).toContain('left: 0');
     expect(css).toContain('left: var(--st-diff-gutter-width)');
+    // Regression guard: don't override sticky on changed rows (we rely on ::before for the marker strip).
+    expect(css).toContain('td.diff-gutter:first-of-type::before');
+    expect(css).not.toContain('td.diff-gutter:first-of-type {');
   });
 
   it('shows a persistent staged badge for staged hunks', () => {
