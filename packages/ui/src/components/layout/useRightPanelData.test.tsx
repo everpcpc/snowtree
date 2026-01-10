@@ -10,6 +10,7 @@ vi.mock('../../utils/api', () => ({
     sessions: {
       getExecutions: (...args: any[]) => mockGetExecutions(...args),
       getDiff: (...args: any[]) => mockGetDiff(...args),
+      getRemotePullRequest: vi.fn(() => Promise.resolve({ success: true, data: null })),
       changeAllStage: vi.fn(),
       changeFileStage: vi.fn(),
     },
@@ -17,7 +18,6 @@ vi.mock('../../utils/api', () => ({
 }));
 
 function Harness({ sessionId }: { sessionId: string }) {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useRightPanelData(sessionId);
   return <div data-testid="mounted" />;
 }

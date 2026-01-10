@@ -38,6 +38,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
       commits,
       workingTree,
       workingTreeDiffs,
+      remotePullRequest,
       commitFiles,
       selection,
       isLoading,
@@ -139,6 +140,15 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
         // ignore
       }
     }, [appVersion]);
+
+    const handleOpenRemotePullRequest = useCallback(async () => {
+      if (!remotePullRequest?.url) return;
+      try {
+        await window.electronAPI?.invoke?.('shell:openExternal', remotePullRequest.url);
+      } catch {
+        // ignore
+      }
+    }, [remotePullRequest?.url]);
 
     const isWorkingTreeSelected = selection?.kind === 'working';
     const selectedCommitHash =
@@ -282,6 +292,19 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
                 Sync commits to Remote PR
               </div>
               <div className="flex items-center gap-1">
+                {remotePullRequest?.number && remotePullRequest.url && (
+                  <button
+                    type="button"
+                    onClick={handleOpenRemotePullRequest}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all duration-75 st-hoverable st-focus-ring"
+                    style={{ color: colors.accent }}
+                    title="Open remote pull request"
+                    data-testid="right-panel-open-remote-pr"
+                  >
+                    <GitPullRequest className="w-3 h-3" />
+                    PR #{remotePullRequest.number}
+                  </button>
+                )}
                 {onPushPR && (
                   <button
                     type="button"
@@ -290,6 +313,7 @@ export const RightPanel: React.FC<RightPanelProps> = React.memo(
                     className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all duration-75 st-hoverable st-focus-ring disabled:opacity-40"
                     style={{ color: colors.accent }}
                     title="Sync committed commits to remote PR"
+                    data-testid="right-panel-sync-remote-pr"
                   >
                     <GitPullRequest className="w-3 h-3" />
                     Remote PR

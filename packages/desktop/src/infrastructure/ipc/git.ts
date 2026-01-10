@@ -3,6 +3,8 @@ import type { AppServices } from './types';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
+type RemotePullRequest = { number: number; url: string };
+
 export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): void {
   const { sessionManager, gitDiffManager, gitStagingManager, gitStatusManager, gitExecutor } = services;
 
@@ -193,6 +195,42 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       return { success: true, data: { currentBranch } };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to load git commands' };
+    }
+  });
+
+  ipcMain.handle('sessions:get-remote-pull-request', async (_event, sessionId: string) => {
+    try {
+      const session = sessionManager.getSession(sessionId);
+      if (!session?.worktreePath) return { success: false, error: 'Session worktree not found' };
+
+      const res = await gitExecutor.run({
+        sessionId,
+        cwd: session.worktreePath,
+        argv: ['gh', 'pr', 'view', '--json', 'number,url'],
+        op: 'read',
+        recordTimeline: false,
+        throwOnError: false,
+        timeoutMs: 8_000,
+        meta: { source: 'ipc.git', operation: 'remote-pr' },
+      });
+
+      if (res.exitCode !== 0) return { success: true, data: null };
+
+      const raw = (res.stdout || '').trim();
+      if (!raw) return { success: true, data: null };
+
+      try {
+        const parsed = JSON.parse(raw) as { number?: unknown; url?: unknown } | null;
+        const number = parsed && typeof parsed.number === 'number' ? parsed.number : null;
+        const url = parsed && typeof parsed.url === 'string' ? parsed.url : '';
+        if (!number || !url) return { success: true, data: null };
+        const out: RemotePullRequest = { number, url };
+        return { success: true, data: out };
+      } catch {
+        return { success: true, data: null };
+      }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to load remote pull request' };
     }
   });
 

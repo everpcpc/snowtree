@@ -9,6 +9,7 @@ vi.mock('../../../utils/api', () => ({
     sessions: {
       getExecutions: vi.fn(),
       getDiff: vi.fn(),
+      getRemotePullRequest: vi.fn(),
       changeAllStage: vi.fn(),
       changeFileStage: vi.fn(),
     },
@@ -35,6 +36,7 @@ describe('RightPanel - Zed-style Changes list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (window as any).electronAPI = {
+      invoke: vi.fn(),
       events: {
         onGitStatusUpdated: vi.fn(),
       },
@@ -70,6 +72,7 @@ describe('RightPanel - Zed-style Changes list', () => {
     });
     (API.sessions.changeAllStage as any).mockResolvedValue({ success: true });
     (API.sessions.changeFileStage as any).mockResolvedValue({ success: true });
+    (API.sessions.getRemotePullRequest as any).mockResolvedValue({ success: true, data: null });
   });
 
   it('renders without crashing', async () => {
@@ -78,6 +81,46 @@ describe('RightPanel - Zed-style Changes list', () => {
     await waitFor(() => {
       expect(screen.getByText(/Changes/i)).toBeInTheDocument();
     });
+  });
+
+  it('shows PR number link when remote PR exists and opens it', async () => {
+    (API.sessions.getRemotePullRequest as any).mockResolvedValue({
+      success: true,
+      data: { number: 1234, url: 'https://github.com/org/repo/pull/1234' },
+    });
+
+    render(<RightPanel {...mockProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-panel-open-remote-pr')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('PR #1234')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('right-panel-open-remote-pr'));
+
+    await waitFor(() => {
+      expect((window as any).electronAPI.invoke).toHaveBeenCalledWith(
+        'shell:openExternal',
+        'https://github.com/org/repo/pull/1234'
+      );
+    });
+  });
+
+  it('keeps Remote PR sync action when remote PR exists', async () => {
+    (API.sessions.getRemotePullRequest as any).mockResolvedValue({
+      success: true,
+      data: { number: 1234, url: 'https://github.com/org/repo/pull/1234' },
+    });
+
+    render(<RightPanel {...mockProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-panel-sync-remote-pr')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('right-panel-sync-remote-pr'));
+    expect(mockProps.onPushPR).toHaveBeenCalledTimes(1);
   });
 
   it('shows Tracked and Untracked sections', async () => {

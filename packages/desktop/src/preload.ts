@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDiff: (sessionId: string, target: { kind: 'working' } | { kind: 'commit'; hash: string }): Promise<IPCResponse> =>
       ipcRenderer.invoke('sessions:get-diff', sessionId, target),
     getGitCommands: (sessionId: string): Promise<IPCResponse> => ipcRenderer.invoke('sessions:get-git-commands', sessionId),
+    getRemotePullRequest: (sessionId: string): Promise<IPCResponse> => ipcRenderer.invoke('sessions:get-remote-pull-request', sessionId),
     getFileContent: (sessionId: string, options: { filePath: string; ref: 'HEAD' | 'INDEX' | 'WORKTREE'; maxBytes?: number }): Promise<IPCResponse> =>
       ipcRenderer.invoke('sessions:get-file-content', sessionId, options),
     stageHunk: (sessionId: string, options: {

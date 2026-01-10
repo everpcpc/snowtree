@@ -49,6 +49,11 @@ export type ExecutionDTO = {
   author?: string;
 };
 
+export type RemotePullRequestDTO = {
+  number: number;
+  url: string;
+};
+
 export interface ElectronAPI {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 
@@ -95,6 +100,7 @@ export interface ElectronAPI {
     getExecutions: (sessionId: string) => Promise<IPCResponse<ExecutionDTO[]>>;
     getDiff: (sessionId: string, target: DiffTarget) => Promise<IPCResponse<GitDiffResultDTO>>;
     getGitCommands: (sessionId: string) => Promise<IPCResponse<{ currentBranch: string }>>;
+    getRemotePullRequest: (sessionId: string) => Promise<IPCResponse<RemotePullRequestDTO | null>>;
     getFileContent: (sessionId: string, options: { filePath: string; ref: 'HEAD' | 'INDEX' | 'WORKTREE'; maxBytes?: number }) => Promise<IPCResponse<{ content: string }>>;
     stageHunk: (sessionId: string, options: {
       filePath: string;

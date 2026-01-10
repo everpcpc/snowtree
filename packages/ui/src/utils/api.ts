@@ -64,6 +64,11 @@ export class API {
       return window.electronAPI.sessions.getGitCommands(sessionId);
     },
 
+    async getRemotePullRequest(sessionId: string) {
+      requireElectron();
+      return window.electronAPI.sessions.getRemotePullRequest(sessionId);
+    },
+
     async getFileContent(sessionId: string, options: { filePath: string; ref: 'HEAD' | 'INDEX' | 'WORKTREE'; maxBytes?: number }) {
       requireElectron();
       return window.electronAPI.sessions.getFileContent(sessionId, options);

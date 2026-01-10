@@ -26,6 +26,11 @@ export interface WorkingTreeDiffs {
   staged: string;
 }
 
+export interface RemotePullRequest {
+  number: number;
+  url: string;
+}
+
 export type Selection =
   | { kind: 'working' }
   | { kind: 'commit'; hash: string }
@@ -35,6 +40,7 @@ export interface RightPanelData {
   commits: Commit[];
   workingTree: WorkingTree | null;
   workingTreeDiffs: WorkingTreeDiffs;
+  remotePullRequest: RemotePullRequest | null;
   commitFiles: FileChange[];
   selection: Selection;
   isLoading: boolean;
@@ -103,6 +109,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     all: '',
     staged: '',
   });
+  const [remotePullRequest, setRemotePullRequest] = useState<RemotePullRequest | null>(null);
   const [commitFiles, setCommitFiles] = useState<FileChange[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -211,6 +218,27 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     throw new Error(message);
   }, [sessionId]);
 
+  const fetchRemotePullRequest = useCallback(async (signal: AbortSignal): Promise<RemotePullRequest | null> => {
+    if (!sessionId) return null;
+    try {
+      const response = await withTimeout(
+        API.sessions.getRemotePullRequest(sessionId),
+        REQUEST_TIMEOUT,
+        'Load remote PR'
+      );
+      if (signal.aborted) return null;
+      if (response.success && response.data && typeof response.data === 'object') {
+        const pr = response.data as { number?: unknown; url?: unknown } | null;
+        const number = pr && typeof pr.number === 'number' ? pr.number : null;
+        const url = pr && typeof pr.url === 'string' ? pr.url : '';
+        if (number && url) return { number, url };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(async (selectFirst: boolean, options?: { showLoading?: boolean }) => {
     if (!sessionId) return;
 
@@ -223,9 +251,10 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     setError(null);
 
     try {
-      const [newCommits, newSnapshot] = await Promise.all([
+      const [newCommits, newSnapshot, newRemotePR] = await Promise.all([
         fetchCommits(controller.signal),
         fetchWorkingTreeSnapshot(controller.signal),
+        fetchRemotePullRequest(controller.signal),
       ]);
 
       if (controller.signal.aborted) return;
@@ -233,6 +262,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
       setCommits(newCommits);
       setWorkingTree(newSnapshot.workingTree);
       setWorkingTreeDiffs(newSnapshot.diffs);
+      setRemotePullRequest(newRemotePR);
 
       const hasUncommitted = newCommits.some((c) => c.id === 0);
       if (selectFirst) {
@@ -264,7 +294,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
         if (showLoading) setIsLoading(false);
       }
     }
-  }, [sessionId, cancelPending, fetchCommits, fetchWorkingTreeSnapshot, fetchCommitFiles]);
+  }, [sessionId, cancelPending, fetchCommits, fetchWorkingTreeSnapshot, fetchRemotePullRequest, fetchCommitFiles]);
 
   const refresh = useCallback(() => {
     void loadAll(false, { showLoading: true });
@@ -295,6 +325,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
       setCommits([]);
       setWorkingTree(null);
       setWorkingTreeDiffs({ all: '', staged: '' });
+      setRemotePullRequest(null);
       setCommitFiles([]);
       setSelection(null);
       setError(null);
@@ -424,6 +455,7 @@ export function useRightPanelData(sessionId: string | undefined): RightPanelData
     commits,
     workingTree,
     workingTreeDiffs,
+    remotePullRequest,
     commitFiles,
     selection,
     isLoading,
