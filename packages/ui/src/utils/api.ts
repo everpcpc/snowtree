@@ -145,6 +145,48 @@ export class API {
       }
       return result.data;
     },
+
+    // Sync PR workflow: deterministic operations
+    async getSyncContext(sessionId: string): Promise<{
+      status: string;
+      branch: string;
+      log: string;
+      diffStat: string;
+      prInfo: { number: number; url: string; state: string; title: string; body: string } | null;
+      baseBranch: string;
+      ownerRepo: string | null;
+    } | null> {
+      requireElectron();
+      const result = await window.electronAPI.sessions.getSyncContext(sessionId);
+      if (!result.success || !result.data) {
+        return null;
+      }
+      return result.data;
+    },
+
+    async getPrTemplate(sessionId: string): Promise<{ template: string | null; path: string | null } | null> {
+      requireElectron();
+      const result = await window.electronAPI.sessions.getPrTemplate(sessionId);
+      if (!result.success || !result.data) {
+        return null;
+      }
+      return result.data;
+    },
+
+    async executeCommit(sessionId: string, message: string): Promise<{ success: boolean; error?: string; data?: { stdout: string } }> {
+      requireElectron();
+      return window.electronAPI.sessions.executeCommit(sessionId, message);
+    },
+
+    async executePush(sessionId: string): Promise<{ success: boolean; error?: string; data?: { stdout: string; branch: string } }> {
+      requireElectron();
+      return window.electronAPI.sessions.executePush(sessionId);
+    },
+
+    async executePr(sessionId: string, options: { title: string; body: string; baseBranch: string; ownerRepo?: string }): Promise<{ success: boolean; error?: string; data?: { action: string; stdout: string } }> {
+      requireElectron();
+      return window.electronAPI.sessions.executePr(sessionId, options);
+    },
   };
 
   static projects = {

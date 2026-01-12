@@ -9,6 +9,8 @@ import { DiffOverlay } from './DiffOverlay';
 import { useLayoutData } from './useLayoutData';
 import type { PendingMessage, FileChange } from './types';
 import type { DiffTarget } from '../../types/diff';
+import { API } from '../../utils/api';
+import { SyncPreviewDialog } from '../dialogs/SyncPreviewDialog';
 
 const RIGHT_PANEL_WIDTH_KEY = 'snowtree-right-panel-width';
 const DEFAULT_RIGHT_PANEL_WIDTH = 340;
@@ -99,6 +101,12 @@ export const MainLayout: React.FC = React.memo(() => {
   const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(null);
   const [inputFocusRequestId, setInputFocusRequestId] = useState(0);
   const [commitReviewArmed, setCommitReviewArmed] = useState(false);
+  const [showSyncPreview, setShowSyncPreview] = useState(false);
+  const [syncPreviewData, setSyncPreviewData] = useState<{
+    commitMessage: string | null;
+    prTitle: string;
+    prBody: string;
+  } | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     const stored = localStorage.getItem(RIGHT_PANEL_WIDTH_KEY);
     if (stored) {
@@ -178,98 +186,331 @@ export const MainLayout: React.FC = React.memo(() => {
     await sendMessage(message, images, planMode);
   }, [sendMessage]);
 
-  const handleOpenCommitReview = useCallback(() => {
+  const handleOpenCommitReview = useCallback(async () => {
     if (!session || isProcessing) return;
-    setCommitReviewArmed(true);
-    setSelectedDiffTarget({ kind: 'working', scope: 'all' });
-    setSelectedDiffFile(null);
-    setDiffFiles([]);
-    setShowDiffOverlay(true);
-  }, [session, isProcessing]);
 
-  const handleSendCommitRequest = useCallback(async () => {
-    if (!session || isProcessing) return;
-    if (session.toolType !== 'codex' && session.toolType !== 'claude') return;
+    // Phase 1: Collect git context for commit
+    const context = await API.sessions.getSyncContext(session.id);
+    if (!context) {
+      console.error('Failed to get sync context');
+      return;
+    }
 
+    if (!context.diffStat || context.diffStat.trim() === '') {
+      console.log('No staged changes to commit');
+      return;
+    }
+
+    // Phase 2: Build AI prompt to generate commit message
     const toolForSession = selectedTool;
-
-    const commitPrompt = [
-      'Create a git commit from what is currently STAGED (index) in this session.',
+    const commitPromptParts: string[] = [
+      'Generate a commit message based on the following staged changes.',
       '',
-      'Do (show the exact commands you run):',
-      '- git status',
-      '- git diff --cached --stat',
-      '- git commit -m "<message>"',
+      '## Git Context',
+      '### Status',
+      context.status || '(clean)',
       '',
-      'Guidelines:',
-      '- Use a clear, short commit message',
-      '- Do NOT mention the CLI/AI tool or add any generated-by/co-author signatures',
-      '- Do NOT stage additional files; only commit what is already staged',
-      '- If nothing is staged: stop and ask me to stage hunks/files first',
-      '- If a command fails: paste the exact error and ask me what to do next',
-    ].join('\n');
+      '### Recent Commits (for style reference)',
+      context.log || '(no commits)',
+      '',
+      '### Staged Changes',
+      context.diffStat,
+      '',
+      '## Task',
+      'Return a JSON object with:',
+      '```json',
+      '{',
+      '  "commitMessage": "short, clear commit message in imperative mood"',
+      '}',
+      '```',
+      '',
+      '## Guidelines',
+      '- Concise, imperative mood (e.g., "Add feature" not "Added feature")',
+      '- NO signatures or co-author lines',
+      '- Focus on what and why, not how',
+      '- One sentence, under 72 characters if possible',
+      '',
+      'IMPORTANT: Return ONLY the JSON object inside a markdown code fence.',
+    ];
 
-    handleCloseDiff();
-    setInputFocusRequestId((prev) => prev + 1);
+    const commitPrompt = commitPromptParts.join('\n');
+
+    // Phase 3: Send to AI (will appear in timeline)
     setPendingMessage({
       content: commitPrompt,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     await sendMessageToTool(toolForSession, commitPrompt, { skipCheckpointAutoCommit: true });
-  }, [session, isProcessing, selectedTool, handleCloseDiff, sendMessageToTool]);
+
+    // Phase 4: Wait for AI response and show preview
+    setTimeout(async () => {
+      const timeline = await API.sessions.getTimeline(session.id);
+      if (!timeline.success || !timeline.data) {
+        // Fallback
+        setSyncPreviewData({
+          commitMessage: 'Update',
+          prTitle: '', // Not used for commit-only
+          prBody: '', // Not used for commit-only
+        });
+        setCommitReviewArmed(true);
+        setShowSyncPreview(true);
+        return;
+      }
+
+      // Find the last assistant message
+      const events = timeline.data as any[];
+      const lastAssistantMsg = events
+        .filter((e: any) => e.type === 'assistant_message')
+        .pop();
+
+      if (lastAssistantMsg?.content) {
+        try {
+          const jsonMatch = lastAssistantMsg.content.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+          const jsonStr = jsonMatch ? jsonMatch[1] : lastAssistantMsg.content;
+          const summary = JSON.parse(jsonStr.trim());
+
+          setSyncPreviewData({
+            commitMessage: summary.commitMessage || 'Update',
+            prTitle: '', // Not used for commit-only
+            prBody: '', // Not used for commit-only
+          });
+          setCommitReviewArmed(true);
+          setShowSyncPreview(true);
+        } catch (error) {
+          console.error('Failed to parse AI response:', error);
+          setSyncPreviewData({
+            commitMessage: 'Update',
+            prTitle: '',
+            prBody: '',
+          });
+          setCommitReviewArmed(true);
+          setShowSyncPreview(true);
+        }
+      } else {
+        setSyncPreviewData({
+          commitMessage: 'Update',
+          prTitle: '',
+          prBody: '',
+        });
+        setCommitReviewArmed(true);
+        setShowSyncPreview(true);
+      }
+    }, 2000);
+  }, [session, isProcessing, selectedTool, sendMessageToTool]);
 
   const handleRequestPushPR = useCallback(async () => {
     if (!session || isProcessing) return;
+    if (session.toolType !== 'codex' && session.toolType !== 'claude') return;
 
     handleCloseDiff();
     setInputFocusRequestId((prev) => prev + 1);
 
-    if (session.toolType !== 'codex' && session.toolType !== 'claude') return;
+    // Phase 1: Collect git context and PR template
+    const [context, templateData] = await Promise.all([
+      API.sessions.getSyncContext(session.id),
+      API.sessions.getPrTemplate(session.id),
+    ]);
+
+    if (!context) {
+      console.error('Failed to get sync context');
+      return;
+    }
+
+    const hasUncommittedChanges = context.diffStat && context.diffStat.trim() !== '';
+
+    // Phase 2: Build AI prompt with context and template
     const toolForSession = selectedTool;
-
-    const headBranch = branchName || 'main';
-    const baseBranch = session.baseBranch || 'main';
-
-    const pushPrompt = [
-      'Push the current branch and update/create a GitHub PR based on committed changes (using `gh`).',
+    const promptParts: string[] = [
+      'Generate commit message (if needed) and PR details based on the following information.',
       '',
-      `Base branch: ${baseBranch}`,
-      `Expected head branch: ${headBranch}`,
+      '## Git Context',
+      '### Status',
+      context.status || '(clean)',
       '',
-      'Do (show the exact commands you run):',
-      '- git status',
-      '- git branch --show-current',
-      '- git log -1 --oneline',
-      '- git remote -v',
-      '- git push -u origin "$(git branch --show-current)"',
-      '- gh pr view --json number,url,headRefName --jq \'{number,url,headRefName}\'',
-      `- If no PR exists: gh pr create --base ${baseBranch} --head "$(git branch --show-current)" --title "<title>" --body "<body>"`,
+      '### Recent Commits',
+      context.log || '(no commits)',
       '',
-      'Guidelines:',
-      '- Do NOT mention the CLI/AI tool or add any generated-by/co-author signatures',
-      '- If there are staged/unstaged changes: stop and tell me to commit first (PR should be based on commits)',
-      '- If the repo has a PR template, follow it; otherwise write a short summary + testing notes',
-      '- If `gh pr view` fails with "none of the git remotes ... point to a known GitHub host":',
-      '  - Determine the GitHub repo from the origin URL (e.g. github.com/<owner>/<repo>) and rerun with `--repo <owner>/<repo>`:',
-      '    - gh pr view --repo "<owner>/<repo>" --json number,url,headRefName --jq \'{number,url,headRefName}\'',
-      `    - If no PR exists: gh pr create --repo "<owner>/<repo>" --base ${baseBranch} --head "$(git branch --show-current)" --title "<title>" --body "<body>"`,
-      '- If a command fails: paste the exact error and ask me what to do next',
-    ].join('\n');
+      '### Staged Changes',
+      context.diffStat || '(no staged changes)',
+      '',
+      '### Existing PR',
+      context.prInfo ? `PR #${context.prInfo.number}: ${context.prInfo.title}\n${context.prInfo.body}` : '(no existing PR)',
+    ];
 
+    if (templateData?.template) {
+      promptParts.push(
+        '',
+        '## PR Template',
+        'Follow this template structure for the PR body:',
+        '```',
+        templateData.template,
+        '```',
+      );
+    }
+
+    promptParts.push(
+      '',
+      '## Task',
+      'Return a JSON object with the following structure:',
+      '```json',
+      '{',
+      '  "commitMessage": "short commit message if there are uncommitted staged changes, or null",',
+      '  "prTitle": "clear, descriptive PR title",',
+      '  "prBody": "PR description following the template above (if provided)"',
+      '}',
+      '```',
+      '',
+      '## Guidelines',
+      '- Commit message: concise, imperative mood (e.g., "Add feature" not "Added feature"), NO signatures',
+      '- PR title: clear, specific, describes the change',
+      '- PR body: follow the template structure if provided, include ## Summary and ## Test plan sections',
+      '- Do NOT include co-author or generated-by signatures',
+      '- If there are no uncommitted staged changes, set commitMessage to null',
+      '',
+      'IMPORTANT: Return ONLY the JSON object inside a markdown code fence. Nothing else.',
+    );
+
+    const summarizePrompt = promptParts.join('\n');
+
+    // Phase 3: Send to AI (will appear in timeline)
     setPendingMessage({
-      content: pushPrompt,
-      timestamp: new Date().toISOString()
+      content: summarizePrompt,
+      timestamp: new Date().toISOString(),
     });
 
-    await sendMessageToTool(toolForSession, pushPrompt, { skipCheckpointAutoCommit: true });
-  }, [session, isProcessing, selectedTool, handleCloseDiff, sendMessageToTool, branchName]);
+    await sendMessageToTool(toolForSession, summarizePrompt, { skipCheckpointAutoCommit: true });
+
+    // Phase 4: Show loading state while waiting for AI response
+    // TODO: Monitor timeline events to extract AI response
+    // For now, show a simple template-based preview after a delay
+    setTimeout(async () => {
+      // Refetch timeline to get AI response
+      const timeline = await API.sessions.getTimeline(session.id);
+      if (!timeline.success || !timeline.data) {
+        // Fallback to template defaults
+        setSyncPreviewData({
+          commitMessage: hasUncommittedChanges ? 'Update from worktree' : null,
+          prTitle: `Update from ${context.branch}`,
+          prBody: templateData?.template || '## Summary\n\n- Update from worktree\n\n## Test plan\n\n- [ ] Review changes',
+        });
+        setShowSyncPreview(true);
+        return;
+      }
+
+      // Find the last assistant message
+      const events = timeline.data as any[];
+      const lastAssistantMsg = events
+        .filter((e: any) => e.type === 'assistant_message')
+        .pop();
+
+      if (lastAssistantMsg?.content) {
+        try {
+          // Extract JSON from markdown code fence
+          const jsonMatch = lastAssistantMsg.content.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+          const jsonStr = jsonMatch ? jsonMatch[1] : lastAssistantMsg.content;
+          const summary = JSON.parse(jsonStr.trim());
+
+          setSyncPreviewData({
+            commitMessage: summary.commitMessage || null,
+            prTitle: summary.prTitle || `Update from ${context.branch}`,
+            prBody: summary.prBody || (templateData?.template || '## Summary\n\n- Update\n\n## Test plan\n\n- [ ] Review'),
+          });
+          setShowSyncPreview(true);
+        } catch (error) {
+          console.error('Failed to parse AI response:', error);
+          // Fallback
+          setSyncPreviewData({
+            commitMessage: hasUncommittedChanges ? 'Update from worktree' : null,
+            prTitle: `Update from ${context.branch}`,
+            prBody: templateData?.template || '## Summary\n\n- Update\n\n## Test plan\n\n- [ ] Review',
+          });
+          setShowSyncPreview(true);
+        }
+      } else {
+        // No response yet, use template
+        setSyncPreviewData({
+          commitMessage: hasUncommittedChanges ? 'Update from worktree' : null,
+          prTitle: `Update from ${context.branch}`,
+          prBody: templateData?.template || '## Summary\n\n- Update\n\n## Test plan\n\n- [ ] Review',
+        });
+        setShowSyncPreview(true);
+      }
+    }, 2000); // Wait 2 seconds for AI response
+  }, [session, isProcessing, selectedTool, handleCloseDiff, sendMessageToTool]);
 
   const handleCommitClick = useCallback((target: DiffTarget, files: FileChange[]) => {
     setSelectedDiffTarget(target);
     setDiffFiles(files);
     setSelectedDiffFile(null);
     setShowDiffOverlay(true);
+  }, []);
+
+  const handleSyncPreviewConfirm = useCallback(async (edited: { commitMessage?: string; prTitle?: string; prBody?: string }) => {
+    if (!session || isProcessing) return;
+
+    setShowSyncPreview(false);
+    setSyncPreviewData(null);
+
+    try {
+      if (commitReviewArmed) {
+        // Commit-only mode: just execute commit
+        if (edited.commitMessage) {
+          const commitResult = await API.sessions.executeCommit(session.id, edited.commitMessage);
+          if (!commitResult.success) {
+            console.error('Commit failed:', commitResult.error);
+            return;
+          }
+          console.log('Commit completed successfully');
+        }
+        setCommitReviewArmed(false);
+      } else {
+        // Full sync mode: commit + push + PR
+        // Phase 4: Execute deterministic operations
+        // 1. If there's a commit message and staged changes, commit them
+        if (edited.commitMessage) {
+          const commitResult = await API.sessions.executeCommit(session.id, edited.commitMessage);
+          if (!commitResult.success) {
+            console.error('Commit failed:', commitResult.error);
+            return;
+          }
+        }
+
+        // 2. Push to remote
+        const pushResult = await API.sessions.executePush(session.id);
+        if (!pushResult.success) {
+          console.error('Push failed:', pushResult.error);
+          return;
+        }
+
+        // 3. Create or update PR
+        const context = await API.sessions.getSyncContext(session.id);
+        const baseBranch = context?.baseBranch || 'main';
+        const ownerRepo = context?.ownerRepo;
+
+        const prResult = await API.sessions.executePr(session.id, {
+          title: edited.prTitle || 'Update',
+          body: edited.prBody || '',
+          baseBranch,
+          ownerRepo: ownerRepo || undefined,
+        });
+
+        if (!prResult.success) {
+          console.error('PR operation failed:', prResult.error);
+          return;
+        }
+
+        console.log('Sync completed successfully');
+      }
+    } catch (error) {
+      console.error('Operation failed:', error);
+    }
+  }, [session, isProcessing, commitReviewArmed]);
+
+  const handleSyncPreviewCancel = useCallback(() => {
+    setShowSyncPreview(false);
+    setSyncPreviewData(null);
+    setCommitReviewArmed(false);
   }, []);
 
   // Clear pending message when processing completes
@@ -316,6 +557,18 @@ export const MainLayout: React.FC = React.memo(() => {
               />
             </div>
 
+            {showSyncPreview && syncPreviewData && (
+              <div className="px-4 pb-3">
+                <SyncPreviewDialog
+                  commitMessage={syncPreviewData.commitMessage}
+                  prTitle={syncPreviewData.prTitle}
+                  prBody={syncPreviewData.prBody}
+                  onConfirm={handleSyncPreviewConfirm}
+                  onCancel={handleSyncPreviewCancel}
+                />
+              </div>
+            )}
+
             <InputBar
               session={session}
               panelId={aiPanel?.id || null}
@@ -344,15 +597,6 @@ export const MainLayout: React.FC = React.memo(() => {
           target={selectedDiffTarget}
           files={diffFiles}
           onClose={handleCloseDiff}
-          banner={commitReviewArmed && selectedDiffTarget?.kind === 'working' && (selectedDiffTarget.scope || 'all') === 'all' ? {
-            title: 'Review uncommitted diff',
-            description: 'After review, send a commit request to the session CLI (all git commands will be shown in the timeline).',
-            primaryLabel: 'Send commit request',
-            onPrimary: handleSendCommitRequest,
-            secondaryLabel: 'Cancel',
-            onSecondary: handleCloseDiff,
-            primaryDisabled: isProcessing
-          } : undefined}
         />
       </div>
 
