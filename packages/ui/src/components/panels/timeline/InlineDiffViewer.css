@@ -23,9 +23,43 @@
   font-weight: 500;
 }
 
+.inline-diff-viewer .diff-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .inline-diff-viewer .diff-stats {
   display: flex;
   gap: 8px;
+}
+
+/* Preview toggle button */
+.inline-diff-viewer .diff-preview-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--st-border, #333);
+  border-radius: 3px;
+  color: var(--st-text-muted, #666);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inline-diff-viewer .diff-preview-btn:hover {
+  background: color-mix(in srgb, var(--st-accent, #3b82f6) 15%, transparent);
+  border-color: var(--st-accent, #3b82f6);
+  color: var(--st-text, #e0e0e0);
+}
+
+/* Markdown preview area */
+.inline-diff-viewer .inline-diff-preview {
+  max-height: 400px;
+  font-family: var(--st-font-sans, system-ui, sans-serif);
 }
 
 .inline-diff-viewer .diff-stats-added {

@@ -143,17 +143,18 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
         setUnstagedDiff(unstagedRes.data?.diff ?? '');
 
         // Single-file view: expand to full file using a best-effort file source.
+        // Always use WORKTREE to get the current working copy (new content) for preview.
         if (filePath) {
           setFileSources(null);
-          const preferredRef = workingScope === 'untracked' ? 'WORKTREE' : 'HEAD';
           let sourceRes = await withTimeout(
-            API.sessions.getFileContent(sessionId, { filePath, ref: preferredRef, maxBytes: 1024 * 1024 }),
+            API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
             15_000,
             'Load file content'
           );
-          if (!sourceRes.success && preferredRef !== 'WORKTREE') {
+          // Fallback to HEAD if WORKTREE fails (e.g., file was deleted)
+          if (!sourceRes.success) {
             sourceRes = await withTimeout(
-              API.sessions.getFileContent(sessionId, { filePath, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+              API.sessions.getFileContent(sessionId, { filePath, ref: 'HEAD', maxBytes: 1024 * 1024 }),
               15_000,
               'Load file content'
             );
@@ -181,22 +182,23 @@ export const DiffOverlay: React.FC<DiffOverlayProps> = React.memo(({
           const results: Record<string, string> = {};
 
           // Small concurrency pool to avoid UI stalls.
+          // Always use WORKTREE first to get current working copy (new content) for preview.
           const concurrency = 6;
           let cursor = 0;
           const workers = Array.from({ length: concurrency }).map(async () => {
             while (cursor < targets.length) {
               const idx = cursor++;
               const p = targets[idx];
-              const prefer = untracked.has(p) ? 'WORKTREE' : 'HEAD';
               try {
                 let r = await withTimeout(
-                  API.sessions.getFileContent(sessionId, { filePath: p, ref: prefer as any, maxBytes: 1024 * 1024 }),
+                  API.sessions.getFileContent(sessionId, { filePath: p, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
                   15_000,
                   'Load file content'
                 );
-                if (!r.success && prefer !== 'WORKTREE') {
+                // Fallback to HEAD if WORKTREE fails (e.g., file was deleted)
+                if (!r.success) {
                   r = await withTimeout(
-                    API.sessions.getFileContent(sessionId, { filePath: p, ref: 'WORKTREE', maxBytes: 1024 * 1024 }),
+                    API.sessions.getFileContent(sessionId, { filePath: p, ref: 'HEAD', maxBytes: 1024 * 1024 }),
                     15_000,
                     'Load file content'
                   );

@@ -474,4 +474,126 @@ index 1234567..abcdefg 100644
     expect(css).toContain('pointer-events: auto');
     expect(css).toContain('visibility: hidden');
   });
+
+  describe('Markdown Preview', () => {
+    const SAMPLE_MD_DIFF = `diff --git a/README.md b/README.md
+index 1234567..abcdefg 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,4 @@
+ # Title
+-Old content
++New content
++More text`;
+
+    const SAMPLE_NON_MD_DIFF = `diff --git a/file.txt b/file.txt
+index 1234567..abcdefg 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,1 +1,1 @@
+-old
++new`;
+
+    it('shows preview button for markdown files when fileSources is provided', () => {
+      render(
+        <ZedDiffViewer
+          diff={SAMPLE_MD_DIFF}
+          fileSources={{ 'README.md': '# Title\nNew content\nMore text' }}
+        />
+      );
+      const previewBtn = document.querySelector('.st-diff-preview-btn');
+      expect(previewBtn).toBeInTheDocument();
+    });
+
+    it('does not show preview button for non-markdown files', () => {
+      render(
+        <ZedDiffViewer
+          diff={SAMPLE_NON_MD_DIFF}
+          fileSources={{ 'file.txt': 'new content' }}
+        />
+      );
+      const previewBtn = document.querySelector('.st-diff-preview-btn');
+      expect(previewBtn).not.toBeInTheDocument();
+    });
+
+    it('does not show preview button when fileSources is not provided', () => {
+      render(<ZedDiffViewer diff={SAMPLE_MD_DIFF} />);
+      const previewBtn = document.querySelector('.st-diff-preview-btn');
+      expect(previewBtn).not.toBeInTheDocument();
+    });
+
+    it('toggles preview mode when clicking the preview button', async () => {
+      const user = userEvent.setup();
+      const { container } = render(
+        <ZedDiffViewer
+          diff={SAMPLE_MD_DIFF}
+          fileSources={{ 'README.md': '# Title\nNew content\nMore text' }}
+        />
+      );
+
+      // Initially shows diff view
+      expect(container.querySelector('.st-diff-table')).toBeInTheDocument();
+      expect(container.querySelector('.st-markdown-preview')).not.toBeInTheDocument();
+
+      // Click preview button
+      const previewBtn = document.querySelector('.st-diff-preview-btn') as HTMLButtonElement;
+      expect(previewBtn).toBeInTheDocument();
+      await user.click(previewBtn);
+
+      // Now shows markdown preview
+      await waitFor(() => {
+        expect(container.querySelector('.st-markdown-preview')).toBeInTheDocument();
+      });
+
+      // Click again to toggle back
+      await user.click(previewBtn);
+      await waitFor(() => {
+        expect(container.querySelector('.st-diff-table')).toBeInTheDocument();
+      });
+    });
+
+    it('renders markdown content in preview mode', async () => {
+      const user = userEvent.setup();
+      render(
+        <ZedDiffViewer
+          diff={SAMPLE_MD_DIFF}
+          fileSources={{ 'README.md': '# Hello World\n\nThis is **bold** text.' }}
+        />
+      );
+
+      const previewBtn = document.querySelector('.st-diff-preview-btn') as HTMLButtonElement;
+      await user.click(previewBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Hello World')).toBeInTheDocument();
+        expect(screen.getByText('bold')).toBeInTheDocument();
+      });
+    });
+
+    it('keeps file header sticky with top:0', () => {
+      const { container } = render(<ZedDiffViewer diff={SAMPLE_MD_DIFF} />);
+      const css = container.querySelector('style')?.textContent || '';
+      expect(css).toContain('.st-diff-file-header');
+      expect(css).toContain('position: sticky');
+      expect(css).toContain('top: 0');
+    });
+
+    it('shows preview button for .mdx files', () => {
+      const mdxDiff = `diff --git a/docs/page.mdx b/docs/page.mdx
+index 1234567..abcdefg 100644
+--- a/docs/page.mdx
++++ b/docs/page.mdx
+@@ -1,1 +1,1 @@
+-old
++new`;
+      render(
+        <ZedDiffViewer
+          diff={mdxDiff}
+          fileSources={{ 'docs/page.mdx': '# MDX Page' }}
+        />
+      );
+      const previewBtn = document.querySelector('.st-diff-preview-btn');
+      expect(previewBtn).toBeInTheDocument();
+    });
+  });
 });

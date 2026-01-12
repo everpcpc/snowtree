@@ -150,7 +150,8 @@ describe('DiffOverlay', () => {
     );
 
     await waitFor(() => {
-      expect(API.sessions.getFileContent).toHaveBeenCalledWith('s1', expect.objectContaining({ filePath: 'tracked.txt', ref: 'HEAD' }));
+      // All files now use WORKTREE first for preview (to show new/modified content)
+      expect(API.sessions.getFileContent).toHaveBeenCalledWith('s1', expect.objectContaining({ filePath: 'tracked.txt', ref: 'WORKTREE' }));
       expect(API.sessions.getFileContent).toHaveBeenCalledWith('s1', expect.objectContaining({ filePath: 'new.txt', ref: 'WORKTREE' }));
     });
   });

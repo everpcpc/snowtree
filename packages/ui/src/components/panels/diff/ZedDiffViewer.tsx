@@ -1,7 +1,10 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Diff, Hunk, getChangeKey, parseDiff, textLinesToHunk, type ChangeData, type DiffType, type HunkData } from 'react-diff-view';
 import 'react-diff-view/style/index.css';
+import { Eye, EyeOff } from 'lucide-react';
 import { API } from '../../../utils/api';
+import { MarkdownPreview } from './MarkdownPreview';
+import { isMarkdownFile } from './utils/fileUtils';
 
 export interface ZedDiffViewerHandle {
   navigateToHunk: (direction: 'prev' | 'next') => void;
@@ -179,6 +182,18 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
 }, ref) => {
   const fileHeaderRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [pendingHunkKeys, setPendingHunkKeys] = useState<Set<string>>(() => new Set());
+
+  // Markdown preview state - tracks which files are in preview mode
+  const [previewFiles, setPreviewFiles] = useState<Set<string>>(() => new Set());
+
+  const togglePreview = useCallback((path: string) => {
+    setPreviewFiles(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   const setPending = useCallback((key: string, next: boolean) => {
     setPendingHunkKeys((prev) => {
@@ -1028,10 +1043,25 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                   borderBottom: '1px solid var(--st-border-variant)',
                 }}
               >
-                {file.path}
+                <div className="st-diff-file-header-content">
+                  <span className="st-diff-file-path">{file.path}</span>
+                  {isMarkdownFile(file.path) && fileSources?.[file.path] && (
+                    <button
+                      type="button"
+                      className="st-diff-preview-btn"
+                      onClick={() => togglePreview(file.path)}
+                      title={previewFiles.has(file.path) ? 'Show Diff' : 'Preview'}
+                    >
+                      {previewFiles.has(file.path) ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="st-diff-file-body">
+                {previewFiles.has(file.path) && fileSources?.[file.path] ? (
+                  <MarkdownPreview content={fileSources[file.path]} />
+                ) : (
                 <div
                   data-testid="diff-hscroll-container"
                   className="st-diff-hscroll"
@@ -1166,6 +1196,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                   {(hunks) => hunks.map((hunk) => <Hunk key={(hunk as any).__st_hunkKey as string} hunk={hunk} />)}
                 </Diff>
                 </div>
+                )}
               </div>
             </div>
           ))}
@@ -1355,8 +1386,10 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
           }
 
           /* Horizontal-scroll behavior: code scrolls, but headers/gutters stay fixed (Zed-like). */
+          /* Vertical sticky: file header stays at top when scrolling within file */
           .st-diff-file-header {
             position: sticky;
+            top: 0;
             left: 0;
             right: 0;
             z-index: 25;
@@ -1365,6 +1398,45 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
             text-overflow: ellipsis;
             width: 100%;
             min-width: 0;
+          }
+
+          /* File header content layout */
+          .st-diff-file-header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+          }
+
+          .st-diff-file-path {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          /* Markdown preview toggle button */
+          .st-diff-preview-btn {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 20px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid var(--st-border-variant);
+            border-radius: 4px;
+            color: var(--st-text-muted);
+            cursor: pointer;
+            transition: all 0.15s ease;
+          }
+
+          .st-diff-preview-btn:hover {
+            background: color-mix(in srgb, var(--st-accent) 15%, transparent);
+            border-color: var(--st-accent);
+            color: var(--st-text);
           }
 
           /* Ensure headers are sized to the viewport, not to the max-content table width. */
