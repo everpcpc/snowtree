@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
           ref: main
 
       - name: Configure git
@@ -162,6 +163,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
           ref: refs/tags/${{ needs.create_release.outputs.tag }}
 
       - uses: pnpm/action-setup@v4
