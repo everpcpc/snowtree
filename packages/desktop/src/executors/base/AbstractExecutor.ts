@@ -606,7 +606,11 @@ export abstract class AbstractExecutor extends EventEmitter {
         tool: this.getToolType(),
         durationMs,
         exitCode,
-        meta: { operationId }
+        meta: {
+          operationId,
+          // Include error content as stderr so it displays in the UI
+          stderr: enriched.toolStatus === 'failed' && enriched.content ? enriched.content : undefined,
+        }
       });
     }
   }
