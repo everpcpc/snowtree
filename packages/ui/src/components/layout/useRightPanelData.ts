@@ -71,8 +71,8 @@ export interface RightPanelData {
 }
 
 const REQUEST_TIMEOUT = 15_000;
-const PR_POLL_INTERVAL_MS = 5_000;
-const BRANCH_SYNC_POLL_INTERVAL_MS = 30_000;
+const PR_POLL_INTERVAL_MS = 3_000;
+const BRANCH_SYNC_POLL_INTERVAL_MS = 3_000;
 
 const toEpochMs = (timestamp: string) => {
   const t = Date.parse(timestamp);
