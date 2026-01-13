@@ -337,8 +337,7 @@ export class ClaudeExecutor extends AbstractExecutor {
       throw new Error(`No Claude process found for panel ${panelId}`);
     }
 
-    // Send message via stdin
-    process.pty.write(message + '\n');
+    this.sendInput(panelId, message + '\n');
   }
 
   /**
@@ -430,11 +429,8 @@ export class ClaudeExecutor extends AbstractExecutor {
    * Interrupt current operation (Ctrl+C)
    */
   interrupt(panelId: string): void {
-    const process = this.processes.get(panelId);
-    if (!process) return;
-
-    // Send Ctrl+C
-    process.pty.write('\x03');
+    if (!this.processes.has(panelId)) return;
+    this.sendInput(panelId, '\x03');
     cliLogger.info('Claude', panelId, 'Sent interrupt signal');
   }
 }

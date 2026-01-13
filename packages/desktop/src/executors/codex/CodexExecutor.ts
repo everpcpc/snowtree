@@ -79,6 +79,12 @@ export class CodexExecutor extends AbstractExecutor {
     return true;
   }
 
+  protected getSpawnTransport(): 'pty' | 'stdio' {
+    // `codex app-server` speaks JSON-RPC over stdio; running under a PTY can
+    // introduce echo/wrapping that corrupts JSON framing.
+    return 'stdio';
+  }
+
   getCommandName(): string {
     return 'codex';
   }
@@ -623,13 +629,12 @@ export class CodexExecutor extends AbstractExecutor {
   }
 
   private sendRpcMessage(panelId: string, message: JsonRpcRequest | JsonRpcResponse | JsonRpcNotification): void {
-    const process = this.processes.get(panelId);
-    if (!process) {
+    if (!this.processes.has(panelId)) {
       throw new Error(`No Codex process found for panel ${panelId}`);
     }
 
     const data = JSON.stringify(message) + '\n';
-    process.pty.write(data);
+    super.sendInput(panelId, data);
   }
 
   private sendRpcResponse(panelId: string, id: string | number, result: unknown): void {
@@ -974,6 +979,11 @@ export class CodexExecutor extends AbstractExecutor {
     if (prompt) {
       await this.sendUserMessage(panelId, conversationId, prompt);
     }
+  }
+
+  interrupt(panelId: string): void {
+    if (!this.processes.has(panelId)) return;
+    super.sendInput(panelId, '\x03');
   }
 
   sendInput(panelId: string, input: string): void {
