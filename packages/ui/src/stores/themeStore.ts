@@ -22,8 +22,6 @@ function getInitialTheme(): Theme {
 function applyTheme(theme: Theme) {
   if (typeof document === 'undefined') return;
 
-  console.log('[Theme] Applying theme:', theme);
-
   // Remove old theme classes
   document.documentElement.classList.remove('light', 'dark');
   document.body.classList.remove('light', 'dark');
@@ -34,10 +32,6 @@ function applyTheme(theme: Theme) {
   document.body.classList.add(theme);
 
   window.localStorage.setItem(STORAGE_KEY, theme);
-
-  console.log('[Theme] DOM updated. Classes:', document.documentElement.className);
-  console.log('[Theme] Data-theme:', document.documentElement.getAttribute('data-theme'));
-  console.log('[Theme] LocalStorage:', window.localStorage.getItem(STORAGE_KEY));
 }
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
@@ -51,10 +45,8 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   toggleTheme: () => {
     const current = get().theme;
     const next = current === 'dark' ? 'light' : 'dark';
-    console.log('[Theme] Toggling from', current, 'to', next);
     applyTheme(next);
     set({ theme: next });
-    console.log('[Theme] Applied theme:', next);
   },
 }));
 
