@@ -990,6 +990,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
   }, [files, onVisibleFileChange]);
 
   // Apply status classes directly to tbody.diff-hunk elements based on the anchor inside
+  // Also mark first/last changed rows for proper border rendering
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
@@ -1001,6 +1002,17 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
       const isStaged = anchor?.classList.contains('st-hunk-status--staged');
       hunk.classList.remove('st-hunk-status--staged', 'st-hunk-status--unstaged');
       hunk.classList.add(isStaged ? 'st-hunk-status--staged' : 'st-hunk-status--unstaged');
+
+      // Mark first and last changed rows for border caps
+      const changedRows = hunk.querySelectorAll('tr.diff-line:has(.diff-code-insert, .diff-code-delete)');
+      const allRows = hunk.querySelectorAll('tr.diff-line');
+      allRows.forEach((row) => {
+        row.classList.remove('st-hunk-row-first', 'st-hunk-row-last');
+      });
+      if (changedRows.length > 0) {
+        changedRows[0]?.classList.add('st-hunk-row-first');
+        changedRows[changedRows.length - 1]?.classList.add('st-hunk-row-last');
+      }
     }
   }, [files, stagedDiff, unstagedDiff]);
 
@@ -1700,17 +1712,25 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
             left: 0;
             top: 0;
             bottom: 0;
-            width: 4px;
+            width: 6px;
             background: var(--st-hunk-marker-color);
             opacity: 1;
             pointer-events: none;
           }
-          /* Staged: hollow bar - 30% opacity background + left/right border only (Zed style) */
+          /* Staged: hollow bar - 30% opacity background + border forming a complete rectangle (Zed style) */
           .st-diff-table tbody.diff-hunk.st-hunk-status--staged tr.diff-line:has(.diff-code-insert, .diff-code-delete) td.diff-gutter:first-of-type::before {
             background: color-mix(in srgb, var(--st-hunk-marker-color) 30%, transparent);
             border-left: 1px solid var(--st-hunk-marker-color);
             border-right: 1px solid var(--st-hunk-marker-color);
             box-sizing: border-box;
+          }
+          /* Top border cap on first changed row */
+          .st-diff-table tbody.diff-hunk.st-hunk-status--staged tr.diff-line.st-hunk-row-first td.diff-gutter:first-of-type::before {
+            border-top: 1px solid var(--st-hunk-marker-color);
+          }
+          /* Bottom border cap on last changed row */
+          .st-diff-table tbody.diff-hunk.st-hunk-status--staged tr.diff-line.st-hunk-row-last td.diff-gutter:first-of-type::before {
+            border-bottom: 1px solid var(--st-hunk-marker-color);
           }
 
           .st-diff-table .diff-hunk:has(.st-hunk-focused) {
