@@ -289,8 +289,9 @@ index 1234567..abcdefg 100644
     const css = container.querySelector('style')?.textContent || '';
     expect(css).toContain('st-hunk-status--staged');
     expect(css).toContain('td.diff-gutter:first-of-type::before');
-    // Zed-style: staged hunks show hollow bar (30% opacity background + border)
-    expect(css).toContain('border: 1px solid');
+    // Zed-style: staged hunks show hollow bar (30% opacity background + left/right border)
+    expect(css).toContain('border-left: 1px solid');
+    expect(css).toContain('border-right: 1px solid');
     expect(css).toContain('box-sizing: border-box');
   });
 

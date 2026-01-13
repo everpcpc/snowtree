@@ -1705,10 +1705,11 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
             opacity: 1;
             pointer-events: none;
           }
-          /* Staged: hollow bar - 30% opacity background + 1px solid border (Zed style) */
+          /* Staged: hollow bar - 30% opacity background + left/right border only (Zed style) */
           .st-diff-table tbody.diff-hunk.st-hunk-status--staged tr.diff-line:has(.diff-code-insert, .diff-code-delete) td.diff-gutter:first-of-type::before {
             background: color-mix(in srgb, var(--st-hunk-marker-color) 30%, transparent);
-            border: 1px solid var(--st-hunk-marker-color);
+            border-left: 1px solid var(--st-hunk-marker-color);
+            border-right: 1px solid var(--st-hunk-marker-color);
             box-sizing: border-box;
           }
 
