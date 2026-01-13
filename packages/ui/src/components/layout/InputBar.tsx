@@ -435,12 +435,35 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
   const historyIndexRef = useRef<number | null>(null); // index into inputHistoryRef.current
   const draftBeforeHistoryRef = useRef<string>('');
   const historyNavPrimedRef = useRef<'up' | 'down' | null>(null);
+  const draftBySessionIdRef = useRef<Map<string, { html: string; images: ImageAttachment[] }>>(new Map());
+  const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
+  const restoringDraftRef = useRef(false);
   const emitSelectionChange = useCallback(() => {
     try {
       document.dispatchEvent(new Event('selectionchange'));
     } catch {
       // best-effort
     }
+  }, []);
+
+  useEffect(() => {
+    imageAttachmentsRef.current = imageAttachments;
+  }, [imageAttachments]);
+
+  const saveDraftForSession = useCallback((sessionId: string) => {
+    if (restoringDraftRef.current) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const html = editor.innerHTML || '';
+    const images = imageAttachmentsRef.current;
+
+    if (html.trim().length === 0 && images.length === 0) {
+      draftBySessionIdRef.current.delete(sessionId);
+      return;
+    }
+
+    draftBySessionIdRef.current.set(sessionId, { html, images });
   }, []);
 
   const getEditorText = useCallback(() => {
@@ -709,6 +732,41 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     }
   }, [emitSelectionChange]);
 
+  // Restore unsent draft (text + image pills) when switching sessions.
+  useEffect(() => {
+    const sessionId = session.id;
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    restoringDraftRef.current = true;
+    const draft = draftBySessionIdRef.current.get(sessionId);
+    if (draft) {
+      editor.innerHTML = draft.html;
+      setImageAttachments(draft.images);
+    } else {
+      editor.innerHTML = '';
+      setImageAttachments([]);
+    }
+
+    // Reset selection-related refs; old nodes may no longer exist.
+    savedSelectionRef.current = null;
+    historyIndexRef.current = null;
+    draftBeforeHistoryRef.current = '';
+    historyNavPrimedRef.current = null;
+
+    restoringDraftRef.current = false;
+
+    // Place caret at end for consistent typing UX.
+    requestAnimationFrame(() => moveCursorToEnd());
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    emitSelectionChange();
+
+    // Save current session draft when switching away/unmounting.
+    return () => {
+      saveDraftForSession(sessionId);
+    };
+  }, [emitSelectionChange, moveCursorToEnd, saveDraftForSession, session.id]);
+
   const handleEditorCopy = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
     void e;
     // Allow the browser to perform the copy. Then collapse selection and move caret to the end,
@@ -732,10 +790,17 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
       const currentPills = editor.querySelectorAll('[data-image-id]');
       const currentIds = new Set(Array.from(currentPills).map(p => p.getAttribute('data-image-id')));
       
-      setImageAttachments((prev) => prev.filter((img) => currentIds.has(img.id)));
+      setImageAttachments((prev) => {
+        if (prev.length === 0) return prev;
+        const next = prev.filter((img) => currentIds.has(img.id));
+        if (next.length === prev.length) return prev;
+        return next;
+      });
     });
 
-    observer.observe(editor, { childList: true, subtree: true, characterData: true });
+    // Only observe structural changes. Observing `characterData` makes this fire on every keystroke,
+    // which is expensive and can create feedback loops.
+    observer.observe(editor, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
 
@@ -754,6 +819,7 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     }
 
     onSend(text, imageAttachments.length > 0 ? imageAttachments : undefined, executionMode === 'plan');
+    draftBySessionIdRef.current.delete(session.id);
     if (editorRef.current) {
       const editor = editorRef.current;
       editor.innerHTML = '';
