@@ -1193,7 +1193,16 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                       .filter((e): e is readonly [string, React.ReactElement | null] => e !== null)
                   ) as Record<string, React.ReactElement | null>}
                 >
-                  {(hunks) => hunks.map((hunk) => <Hunk key={(hunk as any).__st_hunkKey as string} hunk={hunk} />)}
+                  {(hunks) => hunks.map((hunk, index) => (
+                    <React.Fragment key={(hunk as any).__st_hunkKey as string}>
+                      {index > 0 && (
+                        <tbody className="st-hunk-separator">
+                          <tr><td colSpan={3} /></tr>
+                        </tbody>
+                      )}
+                      <Hunk hunk={hunk} />
+                    </React.Fragment>
+                  ))}
                 </Diff>
                 </div>
                 )}
@@ -1540,7 +1549,17 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
           }
 
           /* Zed-like: only "edit hunks" are treated as blocks. */
-          .st-diff-table .diff-hunk { position: relative; }
+          .st-diff-table .diff-hunk {
+            position: relative;
+          }
+          /* Hunk separator row - spacing between hunks */
+          .st-diff-table .st-hunk-separator {
+            height: 30px;
+          }
+          .st-diff-table .st-hunk-separator td {
+            padding: 0;
+            border: 0;
+          }
           .st-diff-table .diff-hunk:has(.diff-code-insert, .diff-code-delete) {
             --st-hunk-color: var(--st-diff-modified-marker);
             --st-hunk-marker-color: var(--st-hunk-color);
