@@ -1045,7 +1045,7 @@ export const ZedDiffViewer = forwardRef<ZedDiffViewerHandle, ZedDiffViewerProps>
                 onMouseEnter={() => setHoveredHunkKey(null)}
               >
                 <div className="st-diff-file-header-content">
-                  <span className="st-diff-file-path">{file.path}</span>
+                  <span className="st-diff-file-path" data-testid="diff-file-path">{file.path}</span>
                   <div className="st-diff-file-actions">
                     {isMarkdownFile(file.path) && fileSources?.[file.path] && (
                       <button
