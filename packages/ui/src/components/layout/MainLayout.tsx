@@ -7,7 +7,7 @@ import { InputBar } from './InputBar';
 import { RightPanel } from './RightPanel/index';
 import { DiffOverlay } from './DiffOverlay';
 import { useLayoutData } from './useLayoutData';
-import type { PendingMessage, FileChange } from './types';
+import type { PendingMessage, FileChange, CLITool } from './types';
 import type { DiffTarget } from '../../types/diff';
 
 const RIGHT_PANEL_WIDTH_KEY = 'snowtree-right-panel-width';
@@ -387,6 +387,32 @@ export const MainLayout: React.FC = React.memo(() => {
     }
   }, [isProcessing, pendingMessage]);
 
+  // Conversation-level keybinding: Tab only switches agent (Shift+Tab toggles plan/execute).
+  // Prevent using Tab for focus traversal while a session conversation is active.
+  useEffect(() => {
+    if (!session) return;
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      if (e.shiftKey) {
+        setExecutionMode(executionMode === 'execute' ? 'plan' : 'execute');
+        return;
+      }
+
+      const tools: CLITool[] = ['claude', 'codex'];
+      const currentIndex = tools.indexOf(selectedTool);
+      const nextIndex = (currentIndex + 1) % tools.length;
+      setSelectedTool(tools[nextIndex]);
+    };
+
+    window.addEventListener('keydown', handleTabKey, { capture: true });
+    return () => window.removeEventListener('keydown', handleTabKey, { capture: true });
+  }, [session, selectedTool, executionMode, setSelectedTool, setExecutionMode]);
+
   if (!activeSessionId) {
     return (
       <div className="flex-1 flex h-full st-bg">
@@ -426,13 +452,11 @@ export const MainLayout: React.FC = React.memo(() => {
               session={session}
               panelId={aiPanel?.id || null}
               selectedTool={selectedTool}
-              onToolChange={setSelectedTool}
               onSend={handleSendMessage}
               onCancel={cancelRequest}
               isProcessing={isProcessing}
               focusRequestId={inputFocusRequestId}
               initialExecutionMode={executionMode}
-              onExecutionModeChange={setExecutionMode}
             />
           </>
         ) : (
