@@ -76,7 +76,7 @@ type CommandInfo = {
 type TimelineItem =
   | { type: 'userMessage'; seq: number; timestamp: string; content: string }
   | { type: 'agentResponse'; seq: number; timestamp: string; endTimestamp: string; status: 'running' | 'done' | 'error' | 'interrupted'; messages: Array<{ content: string; timestamp: string; isStreaming?: boolean }>; commands: CommandInfo[] }
-  | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null }
+  | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null; thinkingId?: string }
   | { type: 'toolCall'; seq: number; timestamp: string; toolName: string; toolInput?: string; toolResult?: string; isError?: boolean; exitCode?: number }
   | { type: 'userQuestion'; seq: number; timestamp: string; toolUseId: string; panelId?: string; questions: Question[]; status: 'pending' | 'answered'; answers?: Record<string, string | string[]> };
 
@@ -110,7 +110,7 @@ const buildItems = (
     | { type: 'user'; seq: number; timestamp: string; content: string }
     | { type: 'assistant'; seq: number; timestamp: string; content: string; isStreaming?: boolean }
     | { type: 'command'; seq: number; timestamp: string; kind: 'cli' | 'git' | 'worktree'; status?: TimelineEvent['status']; command: string; cwd?: string; durationMs?: number; exitCode?: number; tool?: string; meta?: Record<string, unknown> }
-    | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null }
+    | { type: 'thinking'; seq: number; timestamp: string; content: string; isStreaming?: boolean; tool?: string | null; thinkingId?: string }
     | { type: 'toolCall'; seq: number; timestamp: string; toolName: string; toolInput?: string; toolResult?: string; isError?: boolean; exitCode?: number }
     | { type: 'userQuestion'; seq: number; timestamp: string; toolUseId: string; panelId?: string; questions: Question[]; status: 'pending' | 'answered'; answers?: Record<string, string | string[]> };
 
@@ -147,6 +147,9 @@ const buildItems = (
         content: event.content || '',
         isStreaming: Boolean(event.is_streaming),
         tool: event.tool ?? null,
+        thinkingId: typeof (event as TimelineEvent & { thinking_id?: unknown }).thinking_id === 'string'
+          ? String((event as TimelineEvent & { thinking_id: string }).thinking_id)
+          : undefined,
       });
     } else if (event.kind === 'tool_use') {
       // Pair tool_use with tool_result - use event.id as the pair key
@@ -871,7 +874,7 @@ export const TimelineView: React.FC<{
               if (timelineItem.type === 'thinking') {
                 return (
                   <ThinkingMessage
-                    key={`thinking-${timelineItem.seq}`}
+                    key={`thinking-${timelineItem.thinkingId || timelineItem.seq}`}
                     content={timelineItem.content}
                     timestamp={timelineItem.timestamp}
                     isStreaming={timelineItem.isStreaming}
