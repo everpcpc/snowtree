@@ -160,9 +160,14 @@ export interface ElectronAPI {
   };
 }
 
+export interface ElectronBridge {
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
+}
+
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
+    electron: ElectronBridge;
   }
 }
 
