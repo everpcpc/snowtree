@@ -24,12 +24,6 @@ Snowtree fixes this with **worktree isolation**, **incremental review**, and **s
 - **AI agent updates from `main`** – rebases/merges the latest upstream changes.
 - **AI agent resolves conflicts** – fixes merge conflicts without touching staged files.
 
-## How It Works
-
-1. `snowtree create <repo>` – spawn an isolated worktree that mirrors your target branch.
-2. `snowtree run --agent <name>` – the agent edits, you review/stage, repeat until the snapshot looks good.
-3. `git commit && snowtree pr sync` – ship straight from the worktree just like a regular Git flow.
-
 ## Prerequisites
 
 Install at least one AI coding agent:
