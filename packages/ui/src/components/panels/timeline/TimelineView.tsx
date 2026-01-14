@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, Loader2, XCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { API } from '../../../utils/api';
 import { withTimeout } from '../../../utils/withTimeout';
@@ -41,7 +42,7 @@ const colors = {
 
 const Spinner: React.FC<{ className?: string }> = ({ className }) => {
   const outer = new Set([0, 1, 2, 3, 4, 7, 8, 11, 12, 13, 14, 15]);
-  
+
   return (
     <svg viewBox="0 0 15 15" className={className} fill="currentColor" style={{ width: 14, height: 14, flexShrink: 0 }}>
       {Array.from({ length: 16 }, (_, i) => (
@@ -60,6 +61,29 @@ const Spinner: React.FC<{ className?: string }> = ({ className }) => {
       ))}
     </svg>
   );
+};
+
+// Custom link component that opens external URLs in the system browser
+const ExternalLink: React.FC<React.AnchorHTMLAttributes<HTMLAnchorElement>> = ({ href, children, ...props }) => {
+  const handleClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (href && window.electron?.openExternal) {
+      window.electron.openExternal(href).catch((error) => {
+        console.error('Failed to open external URL:', error);
+      });
+    }
+  }, [href]);
+
+  return (
+    <a href={href} onClick={handleClick} {...props}>
+      {children}
+    </a>
+  );
+};
+
+// Markdown components configuration
+const markdownComponents: Components = {
+  a: ExternalLink,
 };
 
 type CommandInfo = {
@@ -655,7 +679,7 @@ const AgentResponse: React.FC<{
         <div className="space-y-2">
           {messages.map((msg, idx) => (
             <div key={idx} className="markdown-content text-sm leading-relaxed" style={{ color: colors.text.primary }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {msg.content}
               </ReactMarkdown>
             </div>
