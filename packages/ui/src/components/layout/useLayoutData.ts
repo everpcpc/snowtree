@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API } from '../../utils/api';
 import { withTimeout } from '../../utils/withTimeout';
 import type { Session } from '../../types/session';
