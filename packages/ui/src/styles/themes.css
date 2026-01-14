@@ -114,31 +114,32 @@
 }
 
 /* ====== Light Theme ====== */
+/* Terminal-inspired - cream/off-white with subtle borders */
 .light,
 [data-theme="light"] {
-  /* Background layers */
-  --st-bg: #fafafa;
-  --st-editor: #ffffff;
+  /* Background layers - cream/off-white tones */
+  --st-bg: #f8f8f6;
+  --st-editor: #fdfcfa;
   --st-surface: #ffffff;
-  --st-surface-2: #f5f5f5;
+  --st-surface-2: #f4f3f1;
 
-  /* Borders */
-  --st-border: #e4e4e7;
-  --st-border-variant: #d4d4d8;
-  --st-hover: rgba(0, 0, 0, 0.04);
-  --st-selected: rgba(97, 175, 239, 0.12);
+  /* Borders - very subtle, almost invisible */
+  --st-border: #eae9e6;
+  --st-border-variant: #e0dfdc;
+  --st-hover: rgba(0, 0, 0, 0.03);
+  --st-selected: rgba(0, 0, 0, 0.06);
 
-  /* Text hierarchy */
-  --st-text: #18181b;
-  --st-text-muted: #52525b;
-  --st-text-faint: #a1a1aa;
+  /* Text hierarchy - dark gray, not pure black */
+  --st-text: #292524;
+  --st-text-muted: #6b6560;
+  --st-text-faint: #9c9690;
 
-  /* Accent colors */
-  --st-accent: #3b82f6;
-  --st-assistant: #a855f7;
-  --st-success: #22c55e;
-  --st-warning: #f59e0b;
-  --st-danger: #ef4444;
+  /* Accent colors - terminal-style */
+  --st-accent: #0d9488;
+  --st-assistant: #7c3aed;
+  --st-success: #059669;
+  --st-warning: #d97706;
+  --st-danger: #dc2626;
 
   /* Border radius */
   --st-radius: 8px;
@@ -158,57 +159,57 @@
   --st-font-base: 13px;
   --st-font-lg: 14px;
 
-  /* Diff tokens */
-  --st-diff-bg: #ffffff;
-  --st-diff-header-bg: #f9fafb;
-  --st-diff-header-hover: #f3f4f6;
-  --st-diff-border: #e5e7eb;
-  --st-diff-border-faint: #f3f4f6;
-  --st-diff-text: #374151;
-  --st-diff-text-strong: #111827;
-  --st-diff-text-muted: #9ca3af;
-  --st-diff-gutter-fg: #d1d5db;
-  --st-diff-gutter-hover-fg: #6b7280;
+  /* Diff tokens - cream palette */
+  --st-diff-bg: #fdfcfa;
+  --st-diff-header-bg: #f8f8f6;
+  --st-diff-header-hover: #f2f1ef;
+  --st-diff-border: #eae9e6;
+  --st-diff-border-faint: #f4f3f1;
+  --st-diff-text: #44403c;
+  --st-diff-text-strong: #292524;
+  --st-diff-text-muted: #9c9690;
+  --st-diff-gutter-fg: #d5d4d0;
+  --st-diff-gutter-hover-fg: #6b6560;
 
-  /* Diff status markers */
-  --st-diff-added-marker: #16a34a;
+  /* Diff status markers - terminal colors */
+  --st-diff-added-marker: #059669;
   --st-diff-deleted-marker: #dc2626;
-  --st-diff-modified-marker: #ea580c;
-  --st-diff-renamed-marker: #3b82f6;
+  --st-diff-modified-marker: #d97706;
+  --st-diff-renamed-marker: #0d9488;
 
   /* Diff line backgrounds */
-  --st-diff-added-bg: rgba(22, 163, 74, 0.10);
-  --st-diff-deleted-bg: rgba(220, 38, 38, 0.10);
-  --st-diff-modified-bg: rgba(234, 88, 12, 0.08);
-  --st-diff-added-bg-hover: rgba(22, 163, 74, 0.16);
-  --st-diff-deleted-bg-hover: rgba(220, 38, 38, 0.16);
-  --st-diff-modified-bg-hover: rgba(234, 88, 12, 0.14);
+  --st-diff-added-bg: rgba(5, 150, 105, 0.08);
+  --st-diff-deleted-bg: rgba(220, 38, 38, 0.08);
+  --st-diff-modified-bg: rgba(217, 119, 6, 0.06);
+  --st-diff-added-bg-hover: rgba(5, 150, 105, 0.14);
+  --st-diff-deleted-bg-hover: rgba(220, 38, 38, 0.14);
+  --st-diff-modified-bg-hover: rgba(217, 119, 6, 0.12);
 
   /* Diff hunk header */
-  --st-diff-hunk-bg: rgba(59, 130, 246, 0.06);
-  --st-diff-hunk-text: #9ca3af;
+  --st-diff-hunk-bg: rgba(13, 148, 136, 0.05);
+  --st-diff-hunk-text: #9c9690;
   --st-diff-focus-ring: color-mix(in srgb, var(--st-accent) 25%, transparent);
 
-  /* Visual Mode colors */
-  --st-visual-mode-bg: rgba(59, 130, 246, 0.15);
-  --st-visual-mode-border: rgba(59, 130, 246, 0.4);
-  --st-visual-mode-text: rgba(59, 130, 246, 1);
-  --st-visual-mode-selected-bg: rgba(59, 130, 246, 0.30);
-  --st-visual-mode-selected-border: rgba(59, 130, 246, 0.6);
-  --st-visual-mode-anchor: rgba(59, 130, 246, 0.8);
-  --st-visual-mode-cursor: rgba(34, 197, 94, 0.8);
+  /* Visual Mode colors - teal accent */
+  --st-visual-mode-bg: rgba(13, 148, 136, 0.12);
+  --st-visual-mode-border: rgba(13, 148, 136, 0.35);
+  --st-visual-mode-text: rgba(13, 148, 136, 1);
+  --st-visual-mode-selected-bg: rgba(13, 148, 136, 0.25);
+  --st-visual-mode-selected-border: rgba(13, 148, 136, 0.5);
+  --st-visual-mode-anchor: rgba(13, 148, 136, 0.8);
+  --st-visual-mode-cursor: rgba(5, 150, 105, 0.8);
 
   /* Back-compat aliases */
   --color-border-secondary: var(--st-border-variant);
   --color-border-primary: var(--st-border-variant);
   --color-text-tertiary: var(--st-text-faint);
   --color-interactive: var(--st-accent);
-  --color-interactive-rgb: 59, 130, 246;
+  --color-interactive-rgb: 13, 148, 136;
   --color-interactive-text: var(--st-accent);
-  --color-interactive-hover: #60a5fa;
+  --color-interactive-hover: #14b8a6;
   --color-text-interactive-on-dark: var(--st-accent);
-  --color-text-interactive-on-dark-hover: #60a5fa;
-  --color-text-interactive-on-dark-active: #2563eb;
+  --color-text-interactive-on-dark-hover: #14b8a6;
+  --color-text-interactive-on-dark-active: #0f766e;
   --color-text-interactive-on-dark-focus: var(--st-accent);
   --color-focus-ring: var(--st-accent);
 
