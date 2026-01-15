@@ -60,8 +60,8 @@ export abstract class AbstractAIPanelManager {
         agentCwd: pending.agentCwd,
       });
       this.pendingAgentSessionIds.delete(panelId);
-    } catch (err) {
-      this.logger?.error(`[${this.getAgentName()}PanelManager] Failed to persist session ID:`, err);
+    } catch {
+      // best-effort persistence
     }
   }
 
