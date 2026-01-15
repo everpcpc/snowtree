@@ -154,6 +154,23 @@ export const InputBarEditor = forwardRef<InputBarEditorHandle, InputBarEditorPro
       };
     }, [editor, onSubmit, isRunning]);
 
+    useEffect(() => {
+      if (!editor) return;
+
+      const handleCopy = () => {
+        requestAnimationFrame(() => {
+          editor.commands.focus('end');
+        });
+      };
+
+      const editorElement = editor.view.dom;
+      editorElement.addEventListener('copy', handleCopy);
+
+      return () => {
+        editorElement.removeEventListener('copy', handleCopy);
+      };
+    }, [editor]);
+
     // Update editability when running state changes
     useEffect(() => {
       if (editor) {

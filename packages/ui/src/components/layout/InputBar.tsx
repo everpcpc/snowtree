@@ -420,6 +420,10 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
     setImageAttachments([]);
   }, [imageAttachments, isProcessing, onSend, executionMode, session.id]);
 
+  const handleFocusHintClick = useCallback(() => {
+    editorRef.current?.focus();
+  }, []);
+
   const isRunning = session.status === 'running' || session.status === 'initializing';
 
   useEffect(() => {
@@ -731,7 +735,10 @@ export const InputBar: React.FC<InputBarProps> = React.memo(({
             />
           </div>
 
-          <div className="flex items-center justify-between ml-2 mt-1 text-[11px]">
+          <div
+            className="flex items-center justify-between ml-2 mt-1 text-[11px]"
+            onClick={handleFocusHintClick}
+          >
             <div className="flex items-center gap-2">
               {isRunning && (
                 <>

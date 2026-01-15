@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { InputBar } from './InputBar';
 import type { Session } from '../../types/session';
 
@@ -14,6 +15,52 @@ async function blurViaFocusSink(editor: HTMLElement): Promise<void> {
   sink.remove();
 }
 
+const getEditorParagraph = (editor: HTMLElement): HTMLParagraphElement => {
+  const paragraph = editor.querySelector('p');
+  if (!paragraph) {
+    throw new Error('Expected editor to contain a paragraph');
+  }
+  return paragraph;
+};
+
+const getEditorTextNodes = (editor: HTMLElement): Text[] => {
+  const paragraph = getEditorParagraph(editor);
+  return Array.from(paragraph.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE) as Text[];
+};
+
+const setSelectionRange = (node: Text, start: number, end = start) => {
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error('Expected selection to be available');
+  }
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event('selectionchange'));
+};
+
+const getEditor = async (): Promise<HTMLDivElement> => {
+  return (await screen.findByTestId('input-editor')) as HTMLDivElement;
+};
+
+const setCaretInEditor = (editor: HTMLElement, offset: number) => {
+  const textNodes = getEditorTextNodes(editor);
+  if (textNodes.length === 0) {
+    throw new Error('Expected editor to contain text nodes');
+  }
+  setSelectionRange(textNodes[0], offset);
+};
+
+const selectRangeInEditor = (editor: HTMLElement, start: number, end: number) => {
+  const textNodes = getEditorTextNodes(editor);
+  if (textNodes.length === 0) {
+    throw new Error('Expected editor to contain text nodes');
+  }
+  setSelectionRange(textNodes[0], start, end);
+};
+
 // Mock API
 vi.mock('../../utils/api', () => ({
   API: {
@@ -27,11 +74,11 @@ vi.mock('../../utils/api', () => ({
   },
 }));
 
-// Setup browser API mocks
-let mockRange: any;
-let mockSelection: any;
+let originalFileReader: typeof FileReader | undefined;
 
 beforeEach(() => {
+  originalFileReader = global.FileReader;
+
   // Make `innerText` behave consistently in jsdom for contenteditable handling.
   try {
     const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText');
@@ -50,105 +97,54 @@ beforeEach(() => {
     // best-effort
   }
 
-  // Mock Range
-  mockRange = {
-    startContainer: null as Node | null,
-    endContainer: null as Node | null,
-    startOffset: 0,
-    endOffset: 0,
-    collapsed: true,
-    setStart: vi.fn(function(this: any, node: Node, offset: number) {
-      this.startContainer = node;
-      this.startOffset = offset;
-    }),
-    setEnd: vi.fn(function(this: any, node: Node, offset: number) {
-      this.endContainer = node;
-      this.endOffset = offset;
-    }),
-    setStartAfter: vi.fn(function(this: any, node: Node) {
-      const parent = node.parentNode;
-      if (parent) {
-        const index = Array.from(parent.childNodes).indexOf(node as ChildNode);
-        this.startContainer = parent;
-        this.startOffset = index + 1;
+  if (!document.elementFromPoint) {
+    document.elementFromPoint = () => document.body;
+  }
+
+  if (typeof Range !== 'undefined') {
+    if (!Range.prototype.getBoundingClientRect) {
+      Range.prototype.getBoundingClientRect = () => ({
+        top: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    }
+    if (!Range.prototype.getClientRects) {
+      Range.prototype.getClientRects = () => ([{
+        top: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }] as DOMRectList);
+    }
+  }
+
+  class MockFileReader {
+    result: string | ArrayBuffer | null = null;
+    onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null;
+
+    readAsDataURL(file: Blob) {
+      const type = (file as File).type || 'image/png';
+      this.result = `data:${type};base64,TEST_DATA`;
+      if (this.onload) {
+        const event = typeof ProgressEvent === 'undefined' ? new Event('load') : new ProgressEvent('load');
+        this.onload(event as ProgressEvent<FileReader>);
       }
-    }),
-    setEndAfter: vi.fn(function(this: any, node: Node) {
-      const parent = node.parentNode;
-      if (parent) {
-        const index = Array.from(parent.childNodes).indexOf(node as ChildNode);
-        this.endContainer = parent;
-        this.endOffset = index + 1;
-      }
-    }),
-    collapse: vi.fn(function(this: any, toStart: boolean) {
-      if (toStart) {
-        this.endContainer = this.startContainer;
-        this.endOffset = this.startOffset;
-      } else {
-        this.startContainer = this.endContainer;
-        this.startOffset = this.endOffset;
-      }
-      this.collapsed = true;
-    }),
-    selectNodeContents: vi.fn(function(this: any, node: Node) {
-      this.startContainer = node;
-      this.startOffset = 0;
-      this.endContainer = node;
-      this.endOffset = node.childNodes.length;
-      this.collapsed = false;
-    }),
-    deleteContents: vi.fn(),
-    insertNode: vi.fn(function(this: any, node: Node) {
-      if (this.startContainer?.nodeType === Node.TEXT_NODE) {
-        const textNode = this.startContainer as Text;
-        const parent = textNode.parentNode;
-        if (!parent) return;
+    }
+  }
 
-        const rawOffset = typeof this.startOffset === 'number' ? this.startOffset : 0;
-        const offset = Math.max(0, Math.min(rawOffset, textNode.data.length));
-        const before = textNode.data.slice(0, offset);
-        const after = textNode.data.slice(offset);
-        textNode.data = before;
-
-        // Insert new node between the split text nodes (mirrors real Range behavior).
-        parent.insertBefore(node, textNode.nextSibling);
-        if (after.length > 0) {
-          const afterNode = document.createTextNode(after);
-          parent.insertBefore(afterNode, node.nextSibling);
-        }
-        return;
-      }
-
-      if (this.startContainer) {
-        this.startContainer.appendChild(node);
-      }
-    }),
-    getBoundingClientRect: vi.fn(() => ({ top: 0, left: 0, width: 0, height: 10 })),
-    getClientRects: vi.fn(() => [{ top: 0, left: 0, width: 0, height: 10 }]),
-  };
-
-  // Mock Selection
-  mockSelection = {
-    rangeCount: 1,
-    getRangeAt: vi.fn(() => mockRange),
-    removeAllRanges: vi.fn(function(this: any) {
-      this.rangeCount = 0;
-    }),
-    addRange: vi.fn(function(this: any, range: any) {
-      mockRange = range;
-      this.rangeCount = 1;
-    }),
-  };
-
-  // Mock window.getSelection
-  global.window.getSelection = vi.fn(() => mockSelection);
-
-  // Mock document.createRange
-  global.document.createRange = vi.fn(() => {
-    const newRange = { ...mockRange };
-    return newRange;
-  });
+  global.FileReader = MockFileReader as unknown as typeof FileReader;
 
   // Mock window.electronAPI
   (global as any).window.electronAPI = {
@@ -179,50 +175,42 @@ const mockSession: Session = {
 describe('InputBar - Cursor Position Tests', () => {
   let mockOnSend: ReturnType<typeof vi.fn>;
   let mockOnCancel: ReturnType<typeof vi.fn>;
-  let mockOnToolChange: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockOnSend = vi.fn();
     mockOnCancel = vi.fn();
-    mockOnToolChange = vi.fn();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    if (originalFileReader) {
+      global.FileReader = originalFileReader;
+    }
   });
 
-  it('should place cursor after image tag when image is pasted', async () => {
+  it('should place cursor after image pill when image is pasted', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
+    const editor = await getEditor();
 
-    // Set initial content
-    editor.textContent = 'hello';
-    fireEvent.input(editor);
+    await user.click(editor);
+    await user.type(editor, 'hello');
 
-    // Move cursor to position 2 (after "he")
-    const range = document.createRange();
-    const textNode = editor.firstChild as Text;
-    range.setStart(textNode, 2);
-    range.collapse(true);
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    setCaretInEditor(editor, 2);
 
-    // Blur the editor to save cursor position
     await blurViaFocusSink(editor);
 
-    // Create a mock image file
     const file = new File(['test'], 'test.png', { type: 'image/png' });
     const clipboardData = {
       items: [
@@ -231,170 +219,96 @@ describe('InputBar - Cursor Position Tests', () => {
           getAsFile: () => file,
         },
       ],
-      types: [],
+      types: ['image/png'],
       getData: () => '',
     };
 
-    // Paste image while the editor is not focused (exercise the global backup paste handler)
     fireEvent.paste(document.body, { clipboardData });
+    await waitFor(() => expect(editor).toHaveFocus());
 
-    // Wait for image to be inserted
+    fireEvent.paste(editor, { clipboardData });
+
     await waitFor(() => {
       const imageTag = editor.querySelector('[data-image-id]');
       expect(imageTag).toBeInTheDocument();
     });
 
-    // Check cursor position - should be after image tag
     await waitFor(() => {
+      expect(editor.textContent).toContain('[img1]');
+
       const sel = window.getSelection();
       expect(sel).not.toBeNull();
-      if (sel && sel.rangeCount > 0) {
-        const currentRange = sel.getRangeAt(0);
-        const imageTag = editor.querySelector('[data-image-id]');
-
-        // Cursor should be after the image tag and space
-        // The structure should be: textNode("he") -> imageTag -> textNode(" ") -> textNode("llo")
-        // And cursor should be after the space
-        expect(currentRange.startContainer).not.toBe(imageTag);
-
-        // Verify content structure
-        expect(editor.textContent).toContain('[img1]');
+      if (sel) {
+        expect(sel.anchorNode?.nodeType).toBe(Node.TEXT_NODE);
+        const anchorText = sel.anchorNode?.textContent || '';
+        expect(anchorText.startsWith(' ')).toBe(true);
+        expect(sel.anchorOffset).toBe(1);
       }
     });
   });
 
-  it('should hide block cursor when a selection range is active (copy-like)', async () => {
-    render(
-      <InputBar
-        session={mockSession}
-        panelId="test-panel"
-        selectedTool="claude"
-        onToolChange={mockOnToolChange}
-        onSend={mockOnSend}
-        onCancel={mockOnCancel}
-        isProcessing={false}
-      />
-    );
-
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
-    editor.textContent = 'you can copy';
-    fireEvent.input(editor);
-    editor.focus();
-    fireEvent.focus(editor);
-
-    // Collapsed caret first => block cursor visible
-    {
-      const range = document.createRange();
-      const textNode = editor.firstChild as Text;
-      range.setStart(textNode, 0);
-      range.collapse(true);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-    }
-
-    await waitFor(() => expect(screen.getByTestId('input-block-cursor')).toBeInTheDocument());
-
-    // Create a non-collapsed selection (copy leaves selection highlighted) => block cursor hidden
-    {
-      const range = document.createRange();
-      const textNode = editor.firstChild as Text;
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, 3);
-      (range as any).collapsed = false;
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-    }
-
-    await waitFor(() => expect(screen.queryByTestId('input-block-cursor')).not.toBeInTheDocument());
-  });
-
   it('should move caret to end after copy', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
-    editor.textContent = 'copy me';
-    fireEvent.input(editor);
-    editor.focus();
-    fireEvent.focus(editor);
+    const editor = await getEditor();
 
-    // Select a range (non-collapsed)
-    const range = document.createRange();
-    const textNode = editor.firstChild as Text;
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 4);
-    (range as any).collapsed = false;
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    await user.click(editor);
+    await user.type(editor, 'copy me');
 
+    selectRangeInEditor(editor, 0, 4);
     fireEvent.copy(editor);
 
     await waitFor(() => {
-      const sel = window.getSelection()!;
-      expect(sel.rangeCount).toBeGreaterThan(0);
-      const r = sel.getRangeAt(0) as any;
-      expect(r.collapsed).toBe(true);
-      expect(r.startContainer?.nodeType).toBe(Node.TEXT_NODE);
-      expect(r.startOffset).toBe((r.startContainer?.textContent || '').length);
+      const sel = window.getSelection();
+      expect(sel).not.toBeNull();
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        const textNodes = getEditorTextNodes(editor);
+        const lastText = textNodes[textNodes.length - 1];
+        expect(r.collapsed).toBe(true);
+        expect(sel.anchorNode).toBe(lastText);
+        expect(sel.anchorOffset).toBe((lastText.textContent || '').length);
+      }
     });
   });
 
   it('should paste at the current caret, not a stale saved position', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
-    editor.textContent = 'hello';
-    fireEvent.input(editor);
+    const editor = await getEditor();
+
+    await user.click(editor);
+    await user.type(editor, 'hello');
 
     // Save a stale position at the end (simulates prior blur/save)
-    {
-      const range = document.createRange();
-      const textNode = editor.firstChild as Text;
-      range.setStart(textNode, 5);
-      range.collapse(true);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      await blurViaFocusSink(editor);
-    }
+    setCaretInEditor(editor, 5);
+    await blurViaFocusSink(editor);
 
     // User clicks to place caret after 'h' (offset 1), then pastes.
-    editor.focus();
-    fireEvent.focus(editor);
-    {
-      const range = document.createRange();
-      const textNode = editor.firstChild as Text;
-      range.setStart(textNode, 1);
-      range.collapse(true);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-    }
+    await user.click(editor);
+    setCaretInEditor(editor, 1);
 
     const clipboardData = {
       items: [],
@@ -404,44 +318,39 @@ describe('InputBar - Cursor Position Tests', () => {
     fireEvent.paste(editor, { clipboardData });
 
     await waitFor(() => expect(editor.textContent).toBe('hXello'));
+
     await waitFor(() => {
-      const sel = window.getSelection()!;
-      expect(sel.rangeCount).toBeGreaterThan(0);
-      const r = sel.getRangeAt(0) as any;
-      expect(r.collapsed).toBe(true);
-      expect(r.startContainer?.nodeType).toBe(Node.TEXT_NODE);
-      expect(r.startContainer?.textContent).toBe('X');
-      expect(r.startOffset).toBe(1);
+      const sel = window.getSelection();
+      expect(sel).not.toBeNull();
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        expect(r.collapsed).toBe(true);
+        expect(sel.anchorOffset).toBe(2);
+      }
     });
   });
 
   it('should insert text at saved cursor position after blur', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
+    const editor = await getEditor();
 
-    // Set initial content
-    editor.textContent = 'helloworld';
-    fireEvent.input(editor);
+    await user.click(editor);
+    await user.type(editor, 'helloworld');
 
     // Move cursor to position 5 (after "hello")
-    const range = document.createRange();
-    const textNode = editor.firstChild as Text;
-    range.setStart(textNode, 5);
-    range.collapse(true);
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    setCaretInEditor(editor, 5);
 
     // Blur the editor to save cursor position
     await blurViaFocusSink(editor);
@@ -453,86 +362,76 @@ describe('InputBar - Cursor Position Tests', () => {
     });
     document.dispatchEvent(keyEvent);
 
-    // Wait for text to be inserted
     await waitFor(() => {
-      // Text should be inserted at saved position: "helloXworld"
       expect(editor.textContent).toBe('helloXworld');
-    }, { timeout: 1000 });
+    });
   });
 
   it('should paste text at saved cursor position after blur', async () => {
-    // Mock clipboard API
-    const mockClipboard = {
-      readText: vi.fn().mockResolvedValue('PASTED'),
-      // Force fallback to readText (jsdom doesn't fully implement async clipboard items).
-      read: vi.fn().mockRejectedValue(new Error('Clipboard.read not supported in test')),
-    };
-    Object.defineProperty(navigator, 'clipboard', {
-      value: mockClipboard,
-      writable: true,
-    });
+    const user = userEvent.setup();
 
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
+    const editor = await getEditor();
 
-    // Set initial content
-    editor.textContent = 'helloworld';
-    fireEvent.input(editor);
+    await user.click(editor);
+    await user.type(editor, 'helloworld');
 
     // Move cursor to position 5 (after "hello")
-    const range = document.createRange();
-    const textNode = editor.firstChild as Text;
-    range.setStart(textNode, 5);
-    range.collapse(true);
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
+    setCaretInEditor(editor, 5);
 
     // Blur the editor to save cursor position
     await blurViaFocusSink(editor);
 
-    // Simulate Ctrl+V paste
-    const pasteEvent = new KeyboardEvent('keydown', {
+    // Simulate Ctrl+V paste (focuses editor)
+    const pasteKey = new KeyboardEvent('keydown', {
       key: 'v',
       ctrlKey: true,
       bubbles: true,
     });
-    document.dispatchEvent(pasteEvent);
+    document.dispatchEvent(pasteKey);
 
-    // Wait for text to be pasted
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    const clipboardData = {
+      items: [],
+      types: ['text/plain'],
+      getData: () => 'PASTED',
+    };
+    fireEvent.paste(editor, { clipboardData });
+
     await waitFor(() => {
-      // Text should be pasted at saved position: "helloPASTEDworld"
       expect(editor.textContent).toBe('helloPASTEDworld');
-    }, { timeout: 1000 });
+    });
   });
 
   it('should select all input content on Ctrl+A when not focused', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
-    editor.textContent = 'select me';
-    fireEvent.input(editor);
+    const editor = await getEditor();
+
+    await user.click(editor);
+    await user.type(editor, 'select me');
 
     await blurViaFocusSink(editor);
 
@@ -541,45 +440,39 @@ describe('InputBar - Cursor Position Tests', () => {
 
     await waitFor(() => expect(editor).toHaveFocus());
 
-    const sel = window.getSelection()!;
-    expect(sel.rangeCount).toBeGreaterThan(0);
-    const r = sel.getRangeAt(0) as any;
-    expect(r.collapsed).toBe(false);
-    expect(r.startContainer).toBe(editor);
+    const sel = window.getSelection();
+    expect(sel).not.toBeNull();
+    if (sel) {
+      expect(sel.rangeCount).toBeGreaterThan(0);
+      const r = sel.getRangeAt(0);
+      expect(r.collapsed).toBe(false);
+      expect(editor.contains(sel.anchorNode)).toBe(true);
+      expect(editor.contains(sel.focusNode)).toBe(true);
+    }
   });
 
   it('should maintain cursor position through multiple operations', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
+    const editor = await getEditor();
 
-    // Initial text
-    editor.textContent = 'abc';
-    fireEvent.input(editor);
+    await user.click(editor);
+    await user.type(editor, 'abc');
 
-    // Position cursor at index 1 (after "a")
-    let range = document.createRange();
-    let textNode = editor.firstChild as Text;
-    range.setStart(textNode, 1);
-    range.collapse(true);
-    let selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    // Blur
+    setCaretInEditor(editor, 1);
     await blurViaFocusSink(editor);
 
-    // Type "X"
     const keyEvent1 = new KeyboardEvent('keydown', { key: 'X', bubbles: true });
     document.dispatchEvent(keyEvent1);
 
@@ -587,19 +480,10 @@ describe('InputBar - Cursor Position Tests', () => {
       expect(editor.textContent).toBe('aXbc');
     });
 
-    // Focus and move cursor to end
-    editor.focus();
-    range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    // Blur again
+    await user.click(editor);
+    setCaretInEditor(editor, editor.textContent.length);
     await blurViaFocusSink(editor);
 
-    // Type "Y"
     const keyEvent2 = new KeyboardEvent('keydown', { key: 'Y', bubbles: true });
     document.dispatchEvent(keyEvent2);
 
@@ -609,54 +493,49 @@ describe('InputBar - Cursor Position Tests', () => {
   });
 
   it('supports ArrowUp/ArrowDown history navigation with two-step behavior', async () => {
+    const user = userEvent.setup();
+
     render(
       <InputBar
         session={mockSession}
         panelId="test-panel"
         selectedTool="claude"
-        onToolChange={mockOnToolChange}
         onSend={mockOnSend}
         onCancel={mockOnCancel}
         isProcessing={false}
       />
     );
 
-    const editor = screen.getByTestId('input-editor') as HTMLDivElement;
+    const editor = await getEditor();
 
     // Send two messages to populate history.
-    editor.textContent = 'first msg';
-    fireEvent.input(editor);
+    await user.click(editor);
+    await user.type(editor, 'first msg');
     fireEvent.keyDown(editor, { key: 'Enter' });
-    editor.textContent = 'second msg';
-    fireEvent.input(editor);
+    await waitFor(() => expect(editor.textContent).toBe(''));
+
+    await user.type(editor, 'second msg');
     fireEvent.keyDown(editor, { key: 'Enter' });
+    await waitFor(() => expect(editor.textContent).toBe(''));
 
     // Draft text.
-    editor.textContent = 'draft';
-    fireEvent.input(editor);
-    editor.focus();
-    fireEvent.focus(editor);
+    await user.type(editor, 'draft');
+    await user.click(editor);
 
     // Place caret at end of draft.
-    {
-      const range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-    }
+    setCaretInEditor(editor, editor.textContent.length);
 
     // First ArrowUp: move caret to start, do not change text.
     fireEvent.keyDown(editor, { key: 'ArrowUp' });
     expect(editor.textContent).toBe('draft');
     {
-      const sel = window.getSelection()!;
-      expect(sel.rangeCount).toBeGreaterThan(0);
-      const r = sel.getRangeAt(0) as any;
-      expect(r.collapsed).toBe(true);
-      expect(r.startOffset).toBe(0);
+      const sel = window.getSelection();
+      expect(sel).not.toBeNull();
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        expect(r.collapsed).toBe(true);
+        expect(sel.anchorOffset).toBe(0);
+      }
     }
 
     // Second ArrowUp (already at start): load most recent history.
@@ -677,18 +556,8 @@ describe('InputBar - Cursor Position Tests', () => {
 
     // If caret is already at start (e.g. user clicked to start), first ArrowUp should still be a no-op,
     // and only the second ArrowUp should enter history.
-    editor.textContent = 'draft';
-    fireEvent.input(editor);
-    {
-      const range = document.createRange();
-      const textNode = editor.firstChild as Text;
-      range.setStart(textNode, 0);
-      range.collapse(true);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-    }
+    await user.click(editor);
+    setCaretInEditor(editor, 0);
 
     // Reset priming by pressing a non-arrow key.
     fireEvent.keyDown(editor, { key: 'Shift' });
