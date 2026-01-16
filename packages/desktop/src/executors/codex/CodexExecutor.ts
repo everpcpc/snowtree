@@ -971,12 +971,12 @@ export class CodexExecutor extends AbstractExecutor {
     // Plan mode - use read-only sandbox to prevent code modifications
     const sandbox = options.planMode ? 'read-only' : codexOptions.sandbox;
 
-    const overrides = {
+    const overrides: Record<string, unknown> = {
       cwd: worktreePath,
-      model: codexOptions.model,
       sandbox,
       approvalPolicy: codexOptions.askForApproval,
     };
+    // Don't pass model - let codex use its own config default (like Claude CLI)
 
     // Create or resume conversation
     const convo = isResume && resumePath
