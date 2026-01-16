@@ -752,11 +752,31 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       const cwd = session.worktreePath;
       const baseBranch = session.baseBranch || 'main';
 
-      // Fetch origin to ensure we have latest refs (lightweight, does not record timeline)
+      // Determine which remote to use for the base branch
+      // In fork workflows, we want to compare with upstream/main, not origin/main
+      // Try upstream first, fallback to origin
+      let remoteName = 'origin';
+
+      const upstreamCheck = await gitExecutor.run({
+        sessionId,
+        cwd,
+        argv: ['git', 'remote', 'get-url', 'upstream'],
+        op: 'read',
+        recordTimeline: false,
+        throwOnError: false,
+        timeoutMs: 3_000,
+        meta: { source: 'ipc.git', operation: 'check-upstream' },
+      });
+
+      if (upstreamCheck.exitCode === 0 && upstreamCheck.stdout?.trim()) {
+        remoteName = 'upstream';
+      }
+
+      // Fetch the remote to ensure we have latest refs
       await gitExecutor.run({
         sessionId,
         cwd,
-        argv: ['git', 'fetch', 'origin', baseBranch],
+        argv: ['git', 'fetch', remoteName, baseBranch],
         op: 'read',
         recordTimeline: false,
         throwOnError: false,
@@ -764,12 +784,12 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
         meta: { source: 'ipc.git', operation: 'fetch-main' },
       });
 
-      // Count commits that origin/main has but current branch doesn't
-      // git rev-list HEAD..origin/main --count
+      // Count commits that remote/baseBranch has but current branch doesn't
+      // git rev-list HEAD..{remote}/{baseBranch} --count
       const result = await gitExecutor.run({
         sessionId,
         cwd,
-        argv: ['git', 'rev-list', 'HEAD..origin/' + baseBranch, '--count'],
+        argv: ['git', 'rev-list', `HEAD..${remoteName}/${baseBranch}`, '--count'],
         op: 'read',
         recordTimeline: false,
         throwOnError: false,
@@ -778,7 +798,7 @@ export function registerGitHandlers(ipcMain: IpcMain, services: AppServices): vo
       });
 
       if (result.exitCode !== 0) {
-        // May fail if origin/main doesn't exist, return 0
+        // May fail if remote/baseBranch doesn't exist, return 0
         return { success: true, data: { behind: 0, baseBranch } };
       }
 

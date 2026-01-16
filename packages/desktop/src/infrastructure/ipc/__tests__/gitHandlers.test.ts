@@ -479,13 +479,19 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
 
     it('should return commits behind main count', async () => {
       mockGitExecutor.run
-        // git fetch origin main
+        // 1. git remote get-url upstream (no upstream)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fatal: No such remote',
+        } as MockRunResult)
+        // 2. git fetch origin main
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
           stderr: '',
         } as MockRunResult)
-        // git rev-list HEAD..origin/main --count
+        // 3. git rev-list HEAD..origin/main --count
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '5\n',
@@ -502,11 +508,19 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
 
     it('should return 0 when branch is up to date', async () => {
       mockGitExecutor.run
+        // 1. git remote get-url upstream (no upstream)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+        } as MockRunResult)
+        // 2. git fetch origin main
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
           stderr: '',
         } as MockRunResult)
+        // 3. git rev-list HEAD..origin/main --count
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '0\n',
@@ -525,11 +539,19 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
       mockSessionManager.getSession.mockReturnValue({ worktreePath, baseBranch: 'master' });
 
       mockGitExecutor.run
+        // 1. git remote get-url upstream (no upstream)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+        } as MockRunResult)
+        // 2. git fetch origin master
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
           stderr: '',
         } as MockRunResult)
+        // 3. git rev-list HEAD..origin/master --count
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '3\n',
@@ -544,17 +566,25 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
       });
 
       // Verify fetch was called with correct branch
-      const fetchCall = mockGitExecutor.run.mock.calls[0];
+      const fetchCall = mockGitExecutor.run.mock.calls[1]; // Changed from index 0 to 1
       expect(fetchCall[0].argv).toContain('master');
     });
 
     it('should return 0 when origin/main does not exist', async () => {
       mockGitExecutor.run
+        // 1. git remote get-url upstream (no upstream)
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+        } as MockRunResult)
+        // 2. git fetch origin main
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '',
           stderr: '',
         } as MockRunResult)
+        // 3. git rev-list HEAD..origin/main --count (fails)
         .mockResolvedValueOnce({
           exitCode: 128, // fatal: ambiguous argument
           stdout: '',
@@ -571,11 +601,19 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
 
     it('should handle fetch failure gracefully', async () => {
       mockGitExecutor.run
+        // 1. git remote get-url upstream (no upstream)
         .mockResolvedValueOnce({
-          exitCode: 1, // fetch fails
+          exitCode: 1,
+          stdout: '',
+          stderr: '',
+        } as MockRunResult)
+        // 2. git fetch origin main (fails)
+        .mockResolvedValueOnce({
+          exitCode: 1,
           stdout: '',
           stderr: 'fatal: could not fetch',
         } as MockRunResult)
+        // 3. git rev-list HEAD..origin/main --count (still works with local refs)
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: '2\n',
@@ -589,6 +627,40 @@ describe('Git IPC Handlers - Branch Sync Status', () => {
         success: true,
         data: { behind: 2, baseBranch: 'main' },
       });
+    });
+
+    it('should use upstream remote in fork workflow', async () => {
+      mockGitExecutor.run
+        // 1. git remote get-url upstream (has upstream)
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'git@github.com:databendlabs/snowtree.git\n',
+          stderr: '',
+        } as MockRunResult)
+        // 2. git fetch upstream main
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+        } as MockRunResult)
+        // 3. git rev-list HEAD..upstream/main --count
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '7\n',
+          stderr: '',
+        } as MockRunResult);
+
+      const result = await mockIpcMain.invoke('sessions:get-commits-behind-main', sessionId);
+
+      expect(result).toEqual({
+        success: true,
+        data: { behind: 7, baseBranch: 'main' },
+      });
+
+      // Verify fetch was called with upstream
+      const fetchCall = mockGitExecutor.run.mock.calls[1];
+      expect(fetchCall[0].argv).toContain('upstream');
+      expect(fetchCall[0].argv).toContain('main');
     });
   });
 
