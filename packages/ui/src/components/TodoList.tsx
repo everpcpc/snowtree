@@ -37,7 +37,7 @@ const colors = {
 export function TodoList({ todos }: TodoListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  if (todos.length === 0) {
+  if (!todos || todos.length === 0) {
     return null;
   }
 
