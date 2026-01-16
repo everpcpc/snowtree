@@ -40,6 +40,10 @@
     color: var(--st-accent);
   }
 
+  .st-font-mono {
+    font-family: var(--st-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace);
+  }
+
   .st-hoverable {
     transition: background-color var(--st-duration) var(--st-ease), border-color var(--st-duration) var(--st-ease), color var(--st-duration) var(--st-ease);
   }
@@ -799,7 +803,7 @@ body {
 
 @keyframes st-block-caret-blink {
   0%, 50% {
-    opacity: 0.8;
+    opacity: 0.7;
   }
   51%, 100% {
     opacity: 0;
