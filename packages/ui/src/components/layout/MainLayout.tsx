@@ -394,6 +394,22 @@ export const MainLayout: React.FC = React.memo(() => {
     setInputFocusRequestId((prev) => prev + 1);
   }, [setInputFocusRequestId]);
 
+  const handleConversationClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    if (target.closest('button, a, input, textarea, select, label, [contenteditable=\"true\"], [role=\"button\"], [role=\"link\"], [role=\"checkbox\"], [role=\"textbox\"]')) {
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (selection && selection.toString()) return;
+
+    focusInputAfterHotkey();
+  }, [focusInputAfterHotkey]);
+
   // Conversation-level keybinding: Tab only switches agent (Shift+Tab toggles plan/execute).
   // Prevent using Tab for focus traversal while a session conversation is active.
   useEffect(() => {
@@ -448,7 +464,11 @@ export const MainLayout: React.FC = React.memo(() => {
 
         {session ? (
           <>
-            <div key={session.id} className="flex-1 flex flex-col min-h-0 overflow-hidden animate-st-panel-in">
+            <div
+              key={session.id}
+              className="flex-1 flex flex-col min-h-0 overflow-hidden animate-st-panel-in"
+              onClick={handleConversationClick}
+            >
               <ConversationPanel
                 session={session}
                 pendingMessage={pendingMessage}
