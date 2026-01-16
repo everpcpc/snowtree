@@ -3,10 +3,10 @@
  * These models became available after GPT-5's release on August 7, 2025
  */
 
-export type OpenAICodexModel = 
+export type OpenAICodexModel =
   | 'auto'
   | 'gpt-5'
-  | 'gpt-5-codex';
+  | 'gpt-5.2-codex';
 
 export interface CodexModelConfig {
   id: OpenAICodexModel;
@@ -25,10 +25,10 @@ export const CODEX_MODELS: Record<OpenAICodexModel, CodexModelConfig> = {
     label: 'GPT-5',
     description: 'Standard GPT-5 model for general use'
   },
-  'gpt-5-codex': {
-    id: 'gpt-5-codex',
-    label: 'GPT-5 Codex',
-    description: 'GPT-5 optimized for coding tasks'
+  'gpt-5.2-codex': {
+    id: 'gpt-5.2-codex',
+    label: 'GPT-5.2 Codex',
+    description: 'GPT-5.2 optimized for coding tasks'
   }
 };
 
@@ -43,7 +43,7 @@ export function getCodexModelList(): CodexModelConfig[] {
 }
 
 // Default model if none specified
-export const DEFAULT_CODEX_MODEL: OpenAICodexModel = 'gpt-5-codex';
+export const DEFAULT_CODEX_MODEL: OpenAICodexModel = 'auto';
 
 // Codex input options interface
 export interface CodexInputOptions {
