@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import type { Session } from '@snowtree/core/types/session';
 import type { ToolPanel } from '@snowtree/core/types/panels';
 import { API } from '../../utils/api';
 
+type SessionRef = { id: string };
+
 export const useEnsureTerminalPanel = (
-  session: Session | null,
+  session: SessionRef | null,
   terminalPanel: ToolPanel | null,
   setTerminalPanel: (panel: ToolPanel | null) => void
 ) => {

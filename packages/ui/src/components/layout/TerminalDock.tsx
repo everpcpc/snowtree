@@ -7,7 +7,7 @@ export interface TerminalDockProps {
   sessionId: string;
   panelId: string;
   worktreePath?: string;
-  containerRef: RefObject<HTMLElement>;
+  containerRef: RefObject<HTMLElement | null>;
 }
 
 export const TerminalDock: React.FC<TerminalDockProps> = ({

@@ -23,7 +23,7 @@ const readStoredBoolean = (base: string, sessionId: string, fallback: boolean) =
   return fallback;
 };
 
-export const useTerminalDock = (sessionId: string, containerRef: RefObject<HTMLElement>) => {
+export const useTerminalDock = (sessionId: string, containerRef: RefObject<HTMLElement | null>) => {
   const [terminalHeight, setTerminalHeight] = useState(() => {
     return readStoredNumber(
       TERMINAL_LAYOUT_KEYS.height,
@@ -132,7 +132,6 @@ export const useTerminalDock = (sessionId: string, containerRef: RefObject<HTMLE
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey || e.altKey) return;
       if (!e.ctrlKey && !e.metaKey) return;
-      const target = e.target as HTMLElement | null;
 
       const isToggleKey =
         e.code === 'Equal'

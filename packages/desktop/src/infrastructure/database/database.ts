@@ -2059,24 +2059,6 @@ export class DatabaseService {
   }
 
   // Panel operations
-  createPanel(data: {
-    id: string;
-    sessionId: string;
-    type: string;
-    title: string;
-    state?: unknown;
-    metadata?: unknown;
-  }): void {
-    this.transaction(() => {
-      const stateJson = data.state ? JSON.stringify(data.state) : null;
-      const metadataJson = data.metadata ? JSON.stringify(data.metadata) : null;
-      
-      this.db.prepare(`
-        INSERT INTO tool_panels (id, session_id, type, title, state, metadata)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(data.id, data.sessionId, data.type, data.title, stateJson, metadataJson);
-    });
-  }
 
   updatePanel(panelId: string, updates: {
     title?: string;

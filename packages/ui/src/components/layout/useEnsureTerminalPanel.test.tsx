@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React, { useState } from 'react';
-import type { Session } from '@snowtree/core/types/session';
 import type { ToolPanel } from '@snowtree/core/types/panels';
 import { useEnsureTerminalPanel } from './useEnsureTerminalPanel';
 
@@ -16,7 +15,7 @@ vi.mock('../../utils/api', () => ({
 import { API } from '../../utils/api';
 
 type HarnessProps = {
-  session: Session | null;
+  session: { id: string } | null;
   initialPanel?: ToolPanel | null;
 };
 
@@ -32,7 +31,7 @@ describe('useEnsureTerminalPanel', () => {
   });
 
   it('ensures a terminal panel when missing', async () => {
-    const session = { id: 's1' } as Session;
+    const session = { id: 's1' };
     (API.sessions.ensureTerminalPanel as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: true,
       data: { id: 'tp-1', sessionId: 's1', type: 'terminal' },
@@ -45,7 +44,7 @@ describe('useEnsureTerminalPanel', () => {
   });
 
   it('does not call ensure when panel already exists', async () => {
-    const session = { id: 's1' } as Session;
+    const session = { id: 's1' };
     const panel = { id: 'tp-2', sessionId: 's1', type: 'terminal' } as ToolPanel;
 
     render(<Harness session={session} initialPanel={panel} />);

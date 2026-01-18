@@ -266,10 +266,13 @@ export function registerSessionHandlers(ipcMain: IpcMain, services: AppServices)
   ipcMain.handle('sessions:terminal-get-outputs', async (_event, panelId: string, limit?: number) => {
     try {
       const outputs = sessionManager.getSessionOutputsForPanel(panelId, limit);
-      const serialized = outputs.map(output => ({
-        ...output,
-        timestamp: output.timestamp instanceof Date ? output.timestamp.toISOString() : output.timestamp
-      }));
+      const serialized = outputs.map(output => {
+        const timestamp = output.timestamp as unknown;
+        return {
+          ...output,
+          timestamp: timestamp instanceof Date ? timestamp.toISOString() : String(timestamp),
+        };
+      });
       return { success: true, data: serialized };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to load terminal outputs' };
