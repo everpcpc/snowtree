@@ -978,13 +978,19 @@ export class CodexExecutor extends AbstractExecutor {
     };
     // Don't pass model - let codex use its own config default (like Claude CLI)
 
-    // Create or resume conversation (reuse existing if available)
+    // Create or resume conversation
+    // If we have a stored conversationId from a previous process, we need to resume it
+    // (the old conversationId exists only in the terminated process, not the new one)
     const existing = this.conversationIdByPanel.get(panelId);
-    const convo = existing
-      ? existing
-      : (isResume && resumePath
-          ? await this.resumeConversation(panelId, resumePath)
-          : await this.newConversation(panelId, overrides));
+    let convo: { conversationId: string; rolloutPath?: string };
+    if (existing?.rolloutPath) {
+      // Resume using the stored rollout path
+      convo = await this.resumeConversation(panelId, existing.rolloutPath);
+    } else if (isResume && resumePath) {
+      convo = await this.resumeConversation(panelId, resumePath);
+    } else {
+      convo = await this.newConversation(panelId, overrides);
+    }
 
     if (!convo || typeof convo !== 'object') {
       throw new Error(`Codex ${isResume && resumePath ? 'resumeConversation' : 'newConversation'} returned ${convo === null ? 'null' : typeof convo}`);

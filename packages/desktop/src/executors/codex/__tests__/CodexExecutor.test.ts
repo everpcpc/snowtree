@@ -63,24 +63,30 @@ describe('CodexExecutor', () => {
       expect(stored.conversationId).toBe(conversationId);
     });
 
-    it('should reuse existing conversationId on subsequent spawn', async () => {
+    it('should resume conversation using rolloutPath on subsequent spawn', async () => {
       const panelId = 'panel-1';
       const existingConversationId = 'conv-existing-123';
+      const rolloutPath = '/path/to/rollout';
+      const resumedConversationId = 'conv-resumed-456';
 
-      // Pre-set an existing conversationId (simulating previous session)
+      // Pre-set an existing conversationId with rolloutPath (simulating previous session)
       (executor as any).conversationIdByPanel.set(panelId, {
         conversationId: existingConversationId,
-        rolloutPath: '/path/to/rollout',
+        rolloutPath,
       });
 
       // Mock the methods that would be called during spawn
-      const initializeSpy = vi.spyOn(executor, 'initialize').mockResolvedValue();
+      vi.spyOn(executor, 'initialize').mockResolvedValue();
       const newConversationSpy = vi.spyOn(executor, 'newConversation').mockResolvedValue({
-        conversationId: 'conv-new-456',
+        conversationId: 'conv-new-should-not-use',
         rolloutPath: '/new/path',
       });
+      const resumeConversationSpy = vi.spyOn(executor, 'resumeConversation').mockResolvedValue({
+        conversationId: resumedConversationId,
+        rolloutPath,
+      });
       const addListenerSpy = vi.spyOn(executor, 'addConversationListener').mockResolvedValue();
-      const sendMessageSpy = vi.spyOn(executor, 'sendUserMessage').mockResolvedValue();
+      vi.spyOn(executor, 'sendUserMessage').mockResolvedValue();
 
       // Mock super.spawn to avoid actual process spawning
       vi.spyOn(Object.getPrototypeOf(Object.getPrototypeOf(executor)), 'spawn')
@@ -93,15 +99,18 @@ describe('CodexExecutor', () => {
         prompt: 'test prompt',
       });
 
-      // newConversation should NOT be called because we reuse existing
+      // newConversation should NOT be called
       expect(newConversationSpy).not.toHaveBeenCalled();
 
-      // The stored conversationId should still be the existing one
-      const stored = (executor as any).conversationIdByPanel.get(panelId);
-      expect(stored.conversationId).toBe(existingConversationId);
+      // resumeConversation SHOULD be called with the rolloutPath
+      expect(resumeConversationSpy).toHaveBeenCalledWith(panelId, rolloutPath);
 
-      // Listener should be added with existing conversationId
-      expect(addListenerSpy).toHaveBeenCalledWith(panelId, existingConversationId);
+      // The stored conversationId should be the resumed one
+      const stored = (executor as any).conversationIdByPanel.get(panelId);
+      expect(stored.conversationId).toBe(resumedConversationId);
+
+      // Listener should be added with resumed conversationId
+      expect(addListenerSpy).toHaveBeenCalledWith(panelId, resumedConversationId);
     });
 
     it('should create new conversationId when none exists', async () => {
