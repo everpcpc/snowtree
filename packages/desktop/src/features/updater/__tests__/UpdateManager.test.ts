@@ -181,7 +181,7 @@ describe('UpdateManager', () => {
       // Simulate update available
       (mockAutoUpdater as EventEmitter).emit('update-available', { version: '1.2.3' });
 
-      expect(updateAvailableCallback).toHaveBeenCalledWith('1.2.3');
+      expect(updateAvailableCallback).toHaveBeenCalledWith(expect.objectContaining({ version: '1.2.3' }));
     });
 
     it('should set updateAvailable flag', async () => {
@@ -290,7 +290,7 @@ describe('UpdateManager', () => {
 
       // 2. Update available
       (mockAutoUpdater as EventEmitter).emit('update-available', { version: '2.0.0' });
-      expect(updateAvailableCallback).toHaveBeenCalledWith('2.0.0');
+      expect(updateAvailableCallback).toHaveBeenCalledWith(expect.objectContaining({ version: '2.0.0' }));
 
       // 3. Download update
       await updateManager.downloadUpdate();

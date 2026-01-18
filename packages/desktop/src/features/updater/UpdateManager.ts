@@ -18,6 +18,36 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+export type UpdateAvailableInfo = {
+  version: string;
+  releaseNotes?: string;
+};
+
+const formatReleaseNotes = (notes: unknown): string => {
+  if (!notes) return '';
+  if (typeof notes === 'string') return notes.trim();
+  if (Array.isArray(notes)) {
+    const entries = notes
+      .map((entry) => {
+        if (!entry) return '';
+        if (typeof entry === 'string') return entry.trim();
+        if (typeof entry === 'object') {
+          const maybe = entry as { version?: unknown; note?: unknown; title?: unknown };
+          const version = typeof maybe.version === 'string' ? maybe.version.trim() : '';
+          const note = typeof maybe.note === 'string' ? maybe.note.trim() : '';
+          const title = typeof maybe.title === 'string' ? maybe.title.trim() : '';
+          const heading = title || (version ? (version.startsWith('v') ? version : `v${version}`) : '');
+          if (heading && note) return `${heading}\n${note}`.trim();
+          return heading || note;
+        }
+        return '';
+      })
+      .filter(Boolean);
+    return entries.join('\n\n').trim();
+  }
+  return '';
+};
+
 export class UpdateManager extends EventEmitter {
   private updateAvailable = false;
   private updateDownloaded = false;
@@ -42,7 +72,12 @@ export class UpdateManager extends EventEmitter {
       this.updateAvailable = true;
       this.updateDownloaded = false;
       this.latestVersion = info.version;
-      this.emit('update-available', info.version);
+      const releaseNotes = formatReleaseNotes(info.releaseNotes);
+      const payload: UpdateAvailableInfo = {
+        version: info.version,
+        releaseNotes: releaseNotes || undefined,
+      };
+      this.emit('update-available', payload);
     });
 
     // Listen for download completion
