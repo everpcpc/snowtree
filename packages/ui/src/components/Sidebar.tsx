@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FolderPlus, Plus, Trash2, Loader2, Download, RotateCw, Sun, Moon } from 'lucide-react';
+import { ChevronDown, FolderPlus, Plus, Trash2, Loader2, Sun, Moon } from 'lucide-react';
 import { API } from '../utils/api';
 import { useErrorStore } from '../stores/errorStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { formatDistanceToNow } from '../utils/timestampUtils';
 import { StageBadge } from './layout/StageBadge';
 import { useThemeStore } from '../stores/themeStore';
+import { useUpdateStatus } from '../hooks/useUpdateStatus';
+import { SidebarUpdateButton } from './SidebarUpdateButton';
 
 type Project = {
   id: number;
@@ -56,12 +58,17 @@ export function Sidebar() {
   const hasInitializedRenameInputRef = useRef(false);
   const { theme, toggleTheme } = useThemeStore();
   const [appVersion, setAppVersion] = useState<string>('');
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updateVersion, setUpdateVersion] = useState<string>('');
-  const [updateDownloading, setUpdateDownloading] = useState(false);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [updateInstalling, setUpdateInstalling] = useState(false);
-  const [updateError, setUpdateError] = useState<string>('');
+  const {
+    updateAvailable,
+    updateVersion,
+    updateReleaseNotes,
+    updateDownloading,
+    updateDownloaded,
+    updateInstalling,
+    updateError,
+    downloadUpdate,
+    installUpdate,
+  } = useUpdateStatus();
   const sidebarPollingTimerRef = useRef<number | null>(null);
   const worktreePollInFlightRef = useRef<Set<number>>(new Set());
 
@@ -156,68 +163,9 @@ export function Sidebar() {
       }
     })();
 
-    const events = window.electronAPI?.events;
-    if (
-      !events ||
-      typeof events.onUpdateAvailable !== 'function' ||
-      typeof events.onUpdateDownloaded !== 'function'
-    ) {
-      return () => {
-        mounted = false;
-      };
-    }
-
-    const unsubscribes = [
-      events.onUpdateAvailable((version) => {
-        setUpdateAvailable(true);
-        setUpdateVersion(version);
-        setUpdateDownloaded(false);
-        setUpdateInstalling(false);
-        setUpdateError('');
-      }),
-      events.onUpdateDownloaded(() => {
-        setUpdateDownloading(false);
-        setUpdateDownloaded(true);
-        setUpdateInstalling(false);
-      }),
-    ];
-
     return () => {
       mounted = false;
-      unsubscribes.forEach((u) => u());
     };
-  }, []);
-
-  const handleDownloadUpdate = useCallback(async () => {
-    if (!window.electronAPI?.updater) return;
-    setUpdateDownloading(true);
-    setUpdateError('');
-    try {
-      const res = await window.electronAPI.updater.download();
-      if (!res?.success) {
-        setUpdateDownloading(false);
-        setUpdateError(res?.error || 'Failed to download update');
-      }
-    } catch (e) {
-      setUpdateDownloading(false);
-      setUpdateError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-
-  const handleInstallUpdate = useCallback(async () => {
-    if (!window.electronAPI?.updater) return;
-    try {
-      setUpdateInstalling(true);
-      setUpdateError('');
-      const res = await window.electronAPI.updater.install();
-      if (!res?.success) {
-        setUpdateInstalling(false);
-        setUpdateError(res?.error || 'Failed to install update');
-      }
-    } catch (e) {
-      setUpdateInstalling(false);
-      setUpdateError(e instanceof Error ? e.message : String(e));
-    }
   }, []);
 
   const handleOpenReleases = useCallback(async () => {
@@ -239,7 +187,6 @@ export function Sidebar() {
       // ignore
     }
   }, []);
-
 
   const handleAddRepository = useCallback(async () => {
     try {
@@ -820,24 +767,15 @@ export function Sidebar() {
             {appVersion ? `snowtree v${appVersion}` : 'snowtree'}
           </button>
           {updateAvailable && (
-            <button
-              type="button"
-              onClick={updateDownloaded ? handleInstallUpdate : handleDownloadUpdate}
-              disabled={updateDownloaded ? updateInstalling : updateDownloading}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors st-hoverable st-focus-ring disabled:opacity-50"
-              style={{ color: 'var(--st-accent)' }}
-            >
-              {updateDownloaded ? (
-                updateInstalling ? <RotateCw className="w-3 h-3 animate-spin" /> : null
-              ) : updateDownloading ? (
-                <RotateCw className="w-3 h-3 animate-spin" />
-              ) : (
-                <Download className="w-3 h-3" />
-              )}
-              {updateDownloaded
-                ? (updateVersion ? `Restart v${updateVersion}` : 'Restart')
-                : (updateVersion ? `Update v${updateVersion}` : 'Update')}
-            </button>
+            <SidebarUpdateButton
+              version={updateVersion}
+              releaseNotes={updateReleaseNotes}
+              isDownloading={updateDownloading}
+              isDownloaded={updateDownloaded}
+              isInstalling={updateInstalling}
+              onDownload={downloadUpdate}
+              onInstall={installUpdate}
+            />
           )}
           <button
             type="button"

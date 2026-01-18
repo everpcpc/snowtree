@@ -135,7 +135,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onTimelineEvent: (cb: (data: { sessionId: string; event: unknown }) => void) => on('timeline:event', cb),
     onTerminalOutput: (cb: (data: unknown) => void) => on('terminal:output', cb),
     onAssistantStream: (cb: (data: { sessionId: string; panelId: string; content: string }) => void) => on('assistant:stream', cb),
-    onUpdateAvailable: (cb: (version: string) => void) => on('update:available', cb),
+    onUpdateAvailable: (cb: (info: { version: string; releaseNotes?: string }) => void) => on('update:available', cb),
     onUpdateDownloaded: (cb: () => void) => on('update:downloaded', cb),
     onAgentCompleted: (cb: (data: { sessionId: string }) => void) => on('agent:completed', cb),
     onSessionTodosUpdate: (cb: (data: { sessionId: string; todos: Array<{ status: string; content: string; activeForm?: string }> }) => void) => on('session-todos:update', cb),

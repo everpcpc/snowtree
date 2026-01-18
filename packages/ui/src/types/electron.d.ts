@@ -56,6 +56,11 @@ export type RemotePullRequestDTO = {
   merged: boolean;
 };
 
+export type UpdateAvailableInfo = {
+  version: string;
+  releaseNotes?: string;
+};
+
 export interface ElectronAPI {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
 
@@ -188,7 +193,7 @@ export interface ElectronAPI {
     onTimelineEvent: (callback: (data: { sessionId: string; event: TimelineEvent }) => void) => () => void;
     onTerminalOutput: (callback: (data: { sessionId: string; panelId?: string; id?: number; type: string; data: string; timestamp?: string }) => void) => () => void;
     onAssistantStream: (callback: (data: { sessionId: string; panelId: string; content: string }) => void) => () => void;
-    onUpdateAvailable: (callback: (version: string) => void) => () => void;
+    onUpdateAvailable: (callback: (info: UpdateAvailableInfo) => void) => () => void;
     onUpdateDownloaded: (callback: () => void) => () => void;
     onAgentCompleted: (callback: (data: { sessionId: string }) => void) => () => void;
     onSessionTodosUpdate: (callback: (data: { sessionId: string; todos: TodoItem[] }) => void) => () => void;

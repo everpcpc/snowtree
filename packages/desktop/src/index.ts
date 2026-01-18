@@ -31,7 +31,7 @@ import { GeminiExecutor } from './executors/gemini';
 import { GitExecutor } from './executors/git';
 import { setupConsoleWrapper } from './infrastructure/logging/consoleWrapper';
 import { panelManager } from './features/panels/PanelManager';
-import { UpdateManager } from './features/updater/UpdateManager';
+import { UpdateManager, type UpdateAvailableInfo } from './features/updater/UpdateManager';
 import * as fs from 'fs';
 
 // Handle EPIPE errors gracefully - they occur when writing to a closed pipe
@@ -773,10 +773,10 @@ app.whenReady().then(async () => {
 
   // Forward update events to renderer (production only; updateManager is created in initializeServices).
   if (updateManager) {
-    updateManager.on('update-available', (version: string) => {
+    updateManager.on('update-available', (info: UpdateAvailableInfo) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update:available', version);
-        console.log(`[Main] Update available: ${version}`);
+        mainWindow.webContents.send('update:available', info);
+        console.log(`[Main] Update available: ${info.version}`);
       }
     });
 
