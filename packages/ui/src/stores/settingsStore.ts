@@ -17,6 +17,9 @@ export interface AppSettings {
   // Terminal
   terminalFontSize: number;
   terminalScrollback: number;
+
+  // Worktree
+  autoDeleteBranchOnWorktreeRemove: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -29,6 +32,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   terminalFontSize: 13,
   terminalScrollback: 1000,
+  autoDeleteBranchOnWorktreeRemove: false,
 };
 
 interface SettingsStore {

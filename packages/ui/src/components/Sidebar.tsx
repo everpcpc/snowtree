@@ -46,7 +46,7 @@ const applyBaseCommitSuffix = (name: string, baseCommit?: string): string => {
 export function Sidebar() {
   const { showError } = useErrorStore();
   const { sessions, activeSessionId, setActiveSession } = useSessionStore();
-  const { openSettings } = useSettingsStore();
+  const { openSettings, settings } = useSettingsStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<number>>(() => new Set());
@@ -291,7 +291,7 @@ export function Sidebar() {
         ...prev,
         [project.id]: (prev[project.id] || []).filter((w) => w.path !== worktree.path),
       }));
-      const res = await API.projects.removeWorktree(project.id, worktree.path, activeSessionId);
+      const res = await API.projects.removeWorktree(project.id, worktree.path, activeSessionId, settings.autoDeleteBranchOnWorktreeRemove);
       if (!res.success) {
         showError({ title: 'Failed to Delete Workspace', error: res.error || 'Could not delete worktree' });
         void loadWorktrees(project, { silent: true });
@@ -301,7 +301,7 @@ export function Sidebar() {
     } catch (error) {
       showError({ title: 'Failed to Delete Workspace', error: error instanceof Error ? error.message : 'Unknown error' });
     }
-  }, [showError, loadWorktrees, activeSessionId]);
+  }, [showError, loadWorktrees, activeSessionId, settings.autoDeleteBranchOnWorktreeRemove]);
 
   const handleDeleteProject = useCallback(async (project: Project) => {
     const res = await API.projects.delete(project.id);

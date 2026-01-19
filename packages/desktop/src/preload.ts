@@ -37,8 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (projectId: number): Promise<IPCResponse> => ipcRenderer.invoke('projects:delete', projectId),
     getWorktrees: (projectId: number, sessionId?: string | null): Promise<IPCResponse> =>
       ipcRenderer.invoke('projects:get-worktrees', projectId, sessionId),
-    removeWorktree: (projectId: number, worktreePath: string, sessionId?: string | null): Promise<IPCResponse> =>
-      ipcRenderer.invoke('projects:remove-worktree', projectId, worktreePath, sessionId),
+    removeWorktree: (projectId: number, worktreePath: string, sessionId?: string | null, autoDeleteBranch?: boolean): Promise<IPCResponse> =>
+      ipcRenderer.invoke('projects:remove-worktree', projectId, worktreePath, sessionId, autoDeleteBranch),
     renameWorktree: (projectId: number, worktreePath: string, nextName: string, sessionId?: string | null): Promise<IPCResponse> =>
       ipcRenderer.invoke('projects:rename-worktree', projectId, worktreePath, nextName, sessionId),
   },

@@ -90,7 +90,7 @@ export function registerProjectHandlers(ipcMain: IpcMain, services: AppServices)
     }
   });
 
-  ipcMain.handle('projects:remove-worktree', async (_event, projectId: number, worktreePath: string, sessionId?: string | null) => {
+  ipcMain.handle('projects:remove-worktree', async (_event, projectId: number, worktreePath: string, sessionId?: string | null, autoDeleteBranch?: boolean) => {
     try {
       const project = databaseService.getProject(projectId);
       if (!project) return { success: false, error: 'Project not found' };
@@ -102,6 +102,24 @@ export function registerProjectHandlers(ipcMain: IpcMain, services: AppServices)
         return { success: false, error: 'Cannot remove main repository worktree' };
       }
 
+      // Get the branch name before removing the worktree
+      let branchName: string | null = null;
+      if (autoDeleteBranch) {
+        try {
+          const { stdout: branchOut } = await gitExecutor.run({
+            sessionId,
+            cwd: normalizedWorktreePath,
+            argv: ['git', 'branch', '--show-current'],
+            kind: 'git.command',
+            op: 'read',
+            meta: { source: 'workspace', operation: 'worktree-branch-probe', worktreePath: normalizedWorktreePath },
+          });
+          branchName = branchOut.trim();
+        } catch {
+          // ignore - worktree might already be deleted or inaccessible
+        }
+      }
+
       await gitExecutor.run({
         sessionId,
         cwd: project.path,
@@ -111,6 +129,23 @@ export function registerProjectHandlers(ipcMain: IpcMain, services: AppServices)
         meta: { source: 'workspace', operation: 'worktree-remove', worktreePath: normalizedWorktreePath },
         treatAsSuccessIfOutputIncludes: ['is not a working tree', 'does not exist', 'No such file or directory'],
       });
+
+      // Delete the branch if requested and we got a branch name
+      if (autoDeleteBranch && branchName) {
+        try {
+          await gitExecutor.run({
+            sessionId,
+            cwd: project.path,
+            argv: ['git', 'branch', '-D', branchName],
+            kind: 'git.command',
+            op: 'write',
+            meta: { source: 'workspace', operation: 'branch-delete', branch: branchName },
+            treatAsSuccessIfOutputIncludes: ['not found'],
+          });
+        } catch {
+          // ignore - branch might not exist or already deleted
+        }
+      }
 
       // Remove any sessions that were attached to this worktree.
       const sessions = databaseService.getAllSessionsIncludingArchived().filter(
