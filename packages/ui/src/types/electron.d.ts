@@ -92,7 +92,7 @@ export interface ElectronAPI {
       deletions: number;
       filesChanged: number;
     }>>>;
-    removeWorktree: (projectId: number, worktreePath: string, sessionId?: string | null) => Promise<IPCResponse<unknown>>;
+    removeWorktree: (projectId: number, worktreePath: string, sessionId?: string | null, autoDeleteBranch?: boolean) => Promise<IPCResponse<unknown>>;
     renameWorktree: (projectId: number, worktreePath: string, nextName: string, sessionId?: string | null) => Promise<IPCResponse<{ path: string } | unknown>>;
   };
 

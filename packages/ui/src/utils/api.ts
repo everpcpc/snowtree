@@ -246,9 +246,9 @@ export class API {
       return window.electronAPI.projects.getWorktrees(projectId, sessionId);
     },
 
-    async removeWorktree(projectId: number, worktreePath: string, sessionId?: string | null) {
+    async removeWorktree(projectId: number, worktreePath: string, sessionId?: string | null, autoDeleteBranch?: boolean) {
       requireElectron();
-      return window.electronAPI.projects.removeWorktree(projectId, worktreePath, sessionId);
+      return window.electronAPI.projects.removeWorktree(projectId, worktreePath, sessionId, autoDeleteBranch);
     },
 
     async renameWorktree(projectId: number, worktreePath: string, nextName: string, sessionId?: string | null) {
