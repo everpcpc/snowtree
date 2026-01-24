@@ -819,6 +819,7 @@ const AgentResponse: React.FC<{
                           oldString={oldString ?? ''}
                           newString={newString ?? ''}
                           filePath={filePath}
+                          sessionId={sessionId}
                         />
                       </div>
                     )}
@@ -833,6 +834,7 @@ const AgentResponse: React.FC<{
                           oldString={df.oldString}
                           newString={df.newString}
                           filePath={df.filePath}
+                          sessionId={sessionId}
                         />
                       </div>
                     ))}

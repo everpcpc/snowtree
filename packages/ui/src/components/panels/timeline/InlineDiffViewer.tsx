@@ -3,12 +3,14 @@ import { Eye, EyeOff, ChevronDown, ChevronRight } from 'lucide-react';
 import './InlineDiffViewer.css';
 import { MarkdownPreview } from '../diff/MarkdownPreview';
 import { isMarkdownFile } from '../diff/utils/fileUtils';
+import { useFileContent } from '../diff/useFileContent';
 
 export interface InlineDiffViewerProps {
   oldString: string;
   newString: string;
   filePath?: string;
   className?: string;
+  sessionId?: string;
 }
 
 interface DiffLine {
@@ -153,10 +155,17 @@ export function InlineDiffViewer({
   newString,
   filePath,
   className,
+  sessionId,
 }: InlineDiffViewerProps) {
   const isMarkdown = useMemo(() => isMarkdownFile(filePath || ''), [filePath]);
   const [showPreview, setShowPreview] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+
+  const { content: fileContent, loading: loadingContent } = useFileContent({
+    sessionId,
+    filePath,
+    enabled: showPreview && isMarkdown,
+  });
 
   const diffLines = useMemo(() => {
     return generateDiff(oldString, newString);
@@ -202,7 +211,17 @@ export function InlineDiffViewer({
       )}
       <div className={`diff-content-wrapper ${isExpanded ? 'expanded' : 'collapsed'}`}>
         {showPreview && isMarkdown ? (
-          <MarkdownPreview content={newString} className="inline-diff-preview" />
+          loadingContent ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--vscode-descriptionForeground)' }}>
+              Loading preview...
+            </div>
+          ) : fileContent ? (
+            <MarkdownPreview content={fileContent} className="inline-diff-preview" />
+          ) : (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--vscode-descriptionForeground)' }}>
+              Failed to load file content
+            </div>
+          )
         ) : (
           <div className="diff-content">
             {diffLines.map((line, idx) => (
