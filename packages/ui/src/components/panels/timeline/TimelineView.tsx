@@ -612,7 +612,8 @@ const AgentResponse: React.FC<{
   status: 'running' | 'done' | 'error' | 'interrupted';
   timestamp: string;
   endTimestamp: string;
-}> = ({ messages, commands, status, timestamp: _timestamp, endTimestamp }) => {
+  sessionId: string;
+}> = ({ messages, commands, status, timestamp: _timestamp, endTimestamp, sessionId }) => {
   const [showCommands, setShowCommands] = useState(true);
   const userToggledRef = useRef(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -1189,6 +1190,7 @@ export const TimelineView: React.FC<{
                   status={timelineItem.status}
                   timestamp={timelineItem.timestamp}
                   endTimestamp={timelineItem.endTimestamp}
+                  sessionId={sessionId}
                 />
               );
             })}
