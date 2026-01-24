@@ -98,6 +98,7 @@ line 4`;
           oldString="# Old Title"
           newString="# New Title"
           filePath="README.md"
+          worktreePath="/test/worktree"
         />
       );
       const previewBtn = document.querySelector('.diff-preview-btn');
@@ -229,6 +230,32 @@ line 4`;
           oldString="old"
           newString="new"
           filePath="guide.markdown"
+        />
+      );
+      const previewBtn = document.querySelector('.diff-preview-btn');
+      expect(previewBtn).toBeInTheDocument();
+    });
+
+    it('does not show preview button for markdown files outside worktree', () => {
+      render(
+        <InlineDiffViewer
+          oldString="# Old"
+          newString="# New"
+          filePath="/other/project/README.md"
+          worktreePath="/test/worktree"
+        />
+      );
+      const previewBtn = document.querySelector('.diff-preview-btn');
+      expect(previewBtn).not.toBeInTheDocument();
+    });
+
+    it('shows preview button for markdown files inside worktree with absolute path', () => {
+      render(
+        <InlineDiffViewer
+          oldString="# Old"
+          newString="# New"
+          filePath="/test/worktree/README.md"
+          worktreePath="/test/worktree"
         />
       );
       const previewBtn = document.querySelector('.diff-preview-btn');

@@ -11,6 +11,7 @@ export interface InlineDiffViewerProps {
   filePath?: string;
   className?: string;
   sessionId?: string;
+  worktreePath?: string;
 }
 
 interface DiffLine {
@@ -156,15 +157,26 @@ export function InlineDiffViewer({
   filePath,
   className,
   sessionId,
+  worktreePath,
 }: InlineDiffViewerProps) {
   const isMarkdown = useMemo(() => isMarkdownFile(filePath || ''), [filePath]);
   const [showPreview, setShowPreview] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
 
+  // Check if file path is within worktree (relative path or absolute path within worktree)
+  const isFileInWorktree = useMemo(() => {
+    if (!filePath || !worktreePath) return true; // Assume true if we don't have enough info
+    // If path is absolute and doesn't start with worktreePath, it's outside
+    if (filePath.startsWith('/') && !filePath.startsWith(worktreePath)) {
+      return false;
+    }
+    return true;
+  }, [filePath, worktreePath]);
+
   const { content: fileContent, loading: loadingContent } = useFileContent({
     sessionId,
     filePath,
-    enabled: showPreview && isMarkdown,
+    enabled: showPreview && isMarkdown && isFileInWorktree,
   });
 
   const diffLines = useMemo(() => {
@@ -192,7 +204,7 @@ export function InlineDiffViewer({
             <span className="diff-file-path">{filePath}</span>
           </div>
           <div className="diff-header-actions" onClick={(e) => e.stopPropagation()}>
-            {isMarkdown && (
+            {isMarkdown && isFileInWorktree && (
               <button
                 type="button"
                 className="diff-preview-btn"
